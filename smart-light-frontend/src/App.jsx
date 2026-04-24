@@ -6,7 +6,7 @@ import Dashboard from './pages/Dashboard'
 import ControlCenter from './pages/ControlCenter'
 import ThresholdSettings from './pages/ThresholdSettings'
 import Analytics from './pages/Analytics'
-import ubLogo from './assets/ub_logo.png'
+import ubLogo from './assets/logo.png'
 import './index.css'
 
 // ─── Sidebar Component ───────────────────────────────────────
@@ -15,10 +15,10 @@ function Sidebar({ user, onLogout }) {
   const role = user?.role || 'admin_sarpras'
 
   const allNavItems = [
-    { path: '/dashboard',  label: 'Dashboard',           icon: LayoutDashboard, roles: ['admin_sarpras', 'teknisi', 'pimpinan'] },
-    { path: '/control',    label: 'Control Center',      icon: SlidersHorizontal, roles: ['admin_sarpras', 'teknisi'] },
-    { path: '/settings',   label: 'Threshold Settings',  icon: Activity, roles: ['admin_sarpras'] },
-    { path: '/analytics',  label: 'Analytics',           icon: BarChart3, roles: ['admin_sarpras', 'pimpinan'] },
+    { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin_sarpras', 'teknisi', 'pimpinan'] },
+    { path: '/control', label: 'Control Center', icon: SlidersHorizontal, roles: ['admin_sarpras', 'teknisi'] },
+    { path: '/settings', label: 'Threshold Settings', icon: Activity, roles: ['admin_sarpras'] },
+    { path: '/analytics', label: 'Analytics', icon: BarChart3, roles: ['admin_sarpras', 'pimpinan'] },
   ]
 
   const navItems = allNavItems.filter(item =>
@@ -89,7 +89,7 @@ function MainLayout({ user, onLogout, children }) {
 // ─── App Router ───────────────────────────────────────────────
 export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem('auth_token'))
-  const [user, setUser]   = useState(() => {
+  const [user, setUser] = useState(() => {
     const raw = localStorage.getItem('auth_user')
     try { return raw ? JSON.parse(raw) : null } catch { return null }
   })
@@ -122,12 +122,12 @@ export default function App() {
       ) : (
         <MainLayout user={user} onLogout={handleLogout}>
           <Routes>
-            <Route path="/"           element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard"  element={<Dashboard token={token} />} />
-            <Route path="/control"    element={<ControlCenter token={token} />} />
-            <Route path="/settings"   element={<ThresholdSettings token={token} />} />
-            <Route path="/analytics"  element={<Analytics token={token} />} />
-            <Route path="*"           element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard token={token} />} />
+            <Route path="/control" element={<ControlCenter token={token} />} />
+            <Route path="/settings" element={<ThresholdSettings token={token} />} />
+            <Route path="/analytics" element={<Analytics token={token} />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </MainLayout>
       )}

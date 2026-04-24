@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import ubLogo from './assets/ub_logo.png'
+import ubLogo from './assets/logo.png'
 import './Login.css'
 
 // ─── SVG Icons ────────────────────────────────────────────────
