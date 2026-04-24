@@ -201,7 +201,7 @@ export default function Login({ onLoginSuccess }) {
                 id="admin-email"
                 type="email"
                 className={`form-input${fieldErrors.email ? ' is-error' : ''}`}
-                placeholder="admin@ub.ac.id"
+                placeholder="Masukan Email Anda"
                 value={email}
                 onChange={e => handleEmailChange(e.target.value)}
                 autoComplete="email"
@@ -232,7 +232,7 @@ export default function Login({ onLoginSuccess }) {
                 id="admin-password"
                 type={showPw ? 'text' : 'password'}
                 className={`form-input${fieldErrors.password ? ' is-error' : ''}`}
-                placeholder="••••••••"
+                placeholder="Masukan Password Anda"
                 value={password}
                 onChange={e => handlePasswordChange(e.target.value)}
                 autoComplete="current-password"
@@ -286,8 +286,8 @@ export default function Login({ onLoginSuccess }) {
 
         {/* Footer */}
         <div className="login-footer">
-          <p>Authorized Personnel Only.</p>
-          <p>Sistem Monitoring Pencahayaan Pintar UB.</p>
+          <p>Sistem Monitoring Smart Lighting UB.</p>
+          <p>&copy; 2026 Berbisnis Well. All Rights Reserved.</p>
         </div>
       </div>
     </div>
