@@ -3,7 +3,8 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer
 } from 'recharts'
-import { FileText, Clock, Wifi, AlertTriangle, MapPin, Download, RefreshCw, Table2 } from 'lucide-react'
+import { FileText, Clock, Wifi, AlertTriangle, Download, RefreshCw, Table2 } from 'lucide-react'
+import { apiFetch, getErrorMessage } from '../lib/api'
 
 // ─── Helpers ────────────────────────────────────────────────────────
 function formatTimestamp(ts) {
@@ -141,7 +142,7 @@ function exportToPDF(data, summary, filterZone, filterDevice) {
     <tbody>${tableRows}</tbody>
   </table>
   <div class="footer">Sistem Smart Lighting UB Adaptive — Laporan ini dibuat secara otomatis</div>
-  <script>window.onload = () => { window.print(); }<\/script>
+  <script>window.onload = () => { window.print(); }</script>
 </body>
 </html>`
 
@@ -151,34 +152,42 @@ function exportToPDF(data, summary, filterZone, filterDevice) {
 }
 
 // ────────────────────────────────────────────────────────────────────
-export default function Analytics({ token }) {
+export default function Analytics({ token, onUnauthorized }) {
   const [history, setHistory]         = useState([])
   const [loading, setLoading]         = useState(true)
   const [summary, setSummary]         = useState(null)
   const [filterZone, setFilterZone]   = useState('')
   const [filterDevice, setFilterDevice] = useState('')
   const [exporting, setExporting]     = useState('')  // 'pdf' | 'excel' | ''
+  const [error, setError]             = useState('')
 
   const fetchData = useCallback(async () => {
     try {
-      const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
-      const params  = new URLSearchParams({ limit: 500 })
+      setError('')
+      const params = new URLSearchParams({ limit: 500 })
       if (filterZone)   params.set('zone', filterZone)
       if (filterDevice) params.set('device_id', filterDevice)
 
-      const [histRes, sumRes] = await Promise.all([
-        fetch(`/api/device/history?${params}`, { headers }),
-        fetch('/api/dashboard/summary', { headers }),
+      const [historyData, summaryData] = await Promise.all([
+        apiFetch(`/api/device/history?${params}`, { token }),
+        apiFetch('/api/dashboard/summary', { token }),
       ])
 
-      if (histRes.ok) setHistory(await histRes.json())
-      if (sumRes.ok)  setSummary(await sumRes.json())
-    } catch (e) {
-      console.error('Analytics fetch error:', e)
+      setHistory(Array.isArray(historyData) ? historyData : [])
+      setSummary(summaryData)
+    } catch (error) {
+      console.error('Analytics fetch error:', error)
+
+      if (error.status === 401) {
+        onUnauthorized?.()
+        return
+      }
+
+      setError(getErrorMessage(error, 'Gagal memuat data analitik.'))
     } finally {
       setLoading(false)
     }
-  }, [token, filterZone, filterDevice])
+  }, [token, filterZone, filterDevice, onUnauthorized])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -222,6 +231,11 @@ export default function Analytics({ token }) {
               <FileText size={13} /> Live Data ({history.length} entri tersimpan)
             </span>
             <span>Refresh: {new Date().toLocaleTimeString('id-ID')}</span>
+            {error && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626' }}>
+                <AlertTriangle size={13} /> {error}
+              </span>
+            )}
           </div>
         </div>
         <div className="header-actions">

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Sun, Timer, Save, RotateCcw, Check } from 'lucide-react'
+import { apiFetch, getErrorMessage } from '../lib/api'
 
 // ─── Toast (inline) ──────────────────────────────────────────
 function InlineAlert({ type, message }) {
@@ -12,7 +13,7 @@ function InlineAlert({ type, message }) {
   )
 }
 
-export default function ThresholdSettings({ token }) {
+export default function ThresholdSettings({ token, onUnauthorized }) {
   const [settings, setSettings] = useState({ ldr_sensitivity: 420, pir_delay: 15 })
   const [rawInput, setRawInput] = useState('420')
   const [inputError, setInputError] = useState('')
@@ -21,20 +22,38 @@ export default function ThresholdSettings({ token }) {
   const [alertType, setAlertType] = useState('success')
 
   useEffect(() => {
-    fetch('/api/settings', { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } })
-      .then(r => r.json())
-      .then(d => {
-        if (d.ldr_sensitivity && !isNaN(parseInt(d.ldr_sensitivity))) {
-          const v = parseInt(d.ldr_sensitivity)
-          setSettings(s => ({ ...s, ldr_sensitivity: v }))
+    let active = true
+
+    apiFetch('/api/settings', { token })
+      .then(data => {
+        if (!active) return
+
+        if (data.ldr_sensitivity && !isNaN(parseInt(data.ldr_sensitivity))) {
+          const v = parseInt(data.ldr_sensitivity)
+          setSettings(prev => ({ ...prev, ldr_sensitivity: v }))
           setRawInput(String(v))
         }
-        if (d.pir_delay && !isNaN(parseInt(d.pir_delay))) {
-          setSettings(s => ({ ...s, pir_delay: parseInt(d.pir_delay) }))
+
+        if (data.pir_delay && !isNaN(parseInt(data.pir_delay))) {
+          setSettings(prev => ({ ...prev, pir_delay: parseInt(data.pir_delay) }))
         }
       })
-      .catch(console.error)
-  }, [token])
+      .catch(error => {
+        console.error('Threshold settings fetch error:', error)
+
+        if (error.status === 401) {
+          onUnauthorized?.()
+          return
+        }
+
+        setAlertMsg(getErrorMessage(error, 'Gagal memuat konfigurasi sistem.'))
+        setAlertType('error')
+      })
+
+    return () => {
+      active = false
+    }
+  }, [token, onUnauthorized])
 
   // Handle number input with validation
   const handleInputChange = (val) => {
@@ -62,20 +81,20 @@ export default function ThresholdSettings({ token }) {
     if (inputError) return
     setSaving(true)
     try {
-      const res = await fetch('/api/settings', {
+      await apiFetch('/api/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
-        body: JSON.stringify(settings),
+        token,
+        body: settings,
       })
-      if (res.ok) {
-        setAlertMsg('Konfigurasi berhasil disimpan!')
-        setAlertType('success')
-      } else {
-        setAlertMsg('Gagal menyimpan konfigurasi.')
-        setAlertType('error')
+      setAlertMsg('Konfigurasi berhasil disimpan!')
+      setAlertType('success')
+    } catch (error) {
+      if (error.status === 401) {
+        onUnauthorized?.()
+        return
       }
-    } catch {
-      setAlertMsg('Tidak dapat terhubung ke server.')
+
+      setAlertMsg(getErrorMessage(error, 'Gagal menyimpan konfigurasi.'))
       setAlertType('error')
     } finally {
       setSaving(false)

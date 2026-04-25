@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { MapPin, AlertTriangle, CheckCircle2, Lightbulb, Zap, RefreshCw, Power } from 'lucide-react'
+import { MapPin, AlertTriangle, CheckCircle2, Lightbulb, RefreshCw, Power } from 'lucide-react'
+import { apiFetch, getErrorMessage } from '../lib/api'
 
 // ─── Toast Notification ──────────────────────────────────────
 function Toast({ toasts, removeToast }) {
@@ -15,7 +16,7 @@ function Toast({ toasts, removeToast }) {
   )
 }
 
-export default function ControlCenter({ token }) {
+export default function ControlCenter({ token, onUnauthorized }) {
   const [devices, setDevices]   = useState([])
   const [loading, setLoading]   = useState(true)
   const [toasts, setToasts]     = useState([])
@@ -32,19 +33,21 @@ export default function ControlCenter({ token }) {
 
   const fetchDevices = useCallback(async () => {
     try {
-      const res = await fetch('/api/device/latest', {
-        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setDevices(Array.isArray(data) ? data : [])
+      const data = await apiFetch('/api/device/latest', { token })
+      setDevices(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error('ControlCenter fetch error:', error)
+
+      if (error.status === 401) {
+        onUnauthorized?.()
+        return
       }
-    } catch (e) {
-      console.error('ControlCenter fetch error:', e)
+
+      addToast(getErrorMessage(error, 'Tidak dapat memuat device dari server backend.'), 'error')
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, onUnauthorized])
 
   useEffect(() => {
     fetchDevices()
@@ -56,24 +59,20 @@ export default function ControlCenter({ token }) {
     const key = `${deviceId}-${zone}`
     setPending(prev => ({ ...prev, [key]: action }))
     try {
-      const res = await fetch('/api/device/control', {
+      await apiFetch('/api/device/control', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({ device_id: deviceId, zone, action }),
+        token,
+        body: { device_id: deviceId, zone, action },
       })
-      if (res.ok) {
-        addToast(`✓ Perintah ${action} dikirim ke Zone ${zone} (${deviceId})`, 'success')
-        setTimeout(fetchDevices, 1500)
-      } else {
-        const err = await res.json()
-        addToast(err.message || `Gagal mengirim perintah ${action}`, 'error')
+      addToast(`✓ Perintah ${action} dikirim ke Zone ${zone} (${deviceId})`, 'success')
+      setTimeout(fetchDevices, 1500)
+    } catch (error) {
+      if (error.status === 401) {
+        onUnauthorized?.()
+        return
       }
-    } catch (e) {
-      addToast('Tidak dapat terhubung ke server backend.', 'error')
+
+      addToast(getErrorMessage(error, `Gagal mengirim perintah ${action}.`), 'error')
     } finally {
       setPending(prev => {
         const copy = { ...prev }

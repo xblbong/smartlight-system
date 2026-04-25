@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import ubLogo from './assets/logo.png'
+import { apiFetch, getErrorMessage } from './lib/api'
 import './Login.css'
 
 // ─── SVG Icons ────────────────────────────────────────────────
@@ -54,7 +55,7 @@ const IconCheck = () => (
 )
 
 // ─── Login Component ──────────────────────────────────────────
-export default function Login({ onLoginSuccess }) {
+export default function Login({ onLoginSuccess, initialError = '' }) {
   const [email, setEmail]           = useState('')
   const [password, setPassword]     = useState('')
   const [showPw, setShowPw]         = useState(false)
@@ -62,6 +63,12 @@ export default function Login({ onLoginSuccess }) {
   const [error, setError]           = useState('')
   const [success, setSuccess]       = useState('')
   const [fieldErrors, setFieldErrors] = useState({ email: '', password: '' })
+
+  useEffect(() => {
+    if (initialError) {
+      setError(initialError)
+    }
+  }, [initialError])
 
   // ── Validasi sisi klien ──
   const validate = () => {
@@ -99,37 +106,28 @@ export default function Login({ onLoginSuccess }) {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/login', {
+      const data = await apiFetch('/api/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: { email: email.trim(), password },
       })
-
-      const data = await res.json()
-
-      if (res.ok && data.status === 'success') {
+      if (data?.status === 'success') {
         setSuccess('Login berhasil! Mengalihkan ke dashboard...')
-        // Simpan token di localStorage
         localStorage.setItem('auth_token', data.token)
         localStorage.setItem('auth_user', JSON.stringify(data.user))
 
-        // Tunggu sebentar lalu navigasi ke dashboard
         setTimeout(() => {
           onLoginSuccess(data.token, data.user)
         }, 1000)
-      } else {
-        // Error dari server (401, 422, dll)
-        if (res.status === 422 && data.errors) {
-          const errs = { email: '', password: '' }
-          if (data.errors.email)    errs.email    = data.errors.email[0]
-          if (data.errors.password) errs.password = data.errors.password[0]
-          setFieldErrors(errs)
-        } else {
-          setError(data.message || 'Terjadi kesalahan. Coba lagi.')
-        }
       }
-    } catch {
-      setError('Tidak dapat terhubung ke server. Pastikan backend berjalan.')
+    } catch (error) {
+      if (error.status === 422 && error.data?.errors) {
+        const errs = { email: '', password: '' }
+        if (error.data.errors.email) errs.email = error.data.errors.email[0]
+        if (error.data.errors.password) errs.password = error.data.errors.password[0]
+        setFieldErrors(errs)
+      } else {
+        setError(getErrorMessage(error, 'Tidak dapat terhubung ke server. Pastikan backend berjalan.'))
+      }
     } finally {
       setLoading(false)
     }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Wifi, Lightbulb, User, Activity, AlertTriangle, Zap, Gauge } from 'lucide-react'
+import { apiFetch, getErrorMessage } from '../lib/api'
 
 // ─── Helpers ────────────────────────────────────────────────
 function getKondisiStyle(kondisi) {
@@ -11,33 +12,38 @@ function getKondisiStyle(kondisi) {
   return { background: '#f3f4f6', color: '#4b5563' }
 }
 
-export default function Dashboard({ token }) {
+export default function Dashboard({ token, onUnauthorized }) {
   const [summary, setSummary] = useState(null)
   const [devices, setDevices] = useState([])
   const [loading, setLoading] = useState(true)
   const [lastUpdate, setLastUpdate] = useState(null)
+  const [error, setError] = useState('')
 
   const fetchData = useCallback(async () => {
     try {
-      const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+      setError('')
 
-      const [sumRes, devRes] = await Promise.all([
-        fetch('/api/dashboard/summary', { headers }),
-        fetch('/api/device/latest',     { headers }),
+      const [summaryData, deviceData] = await Promise.all([
+        apiFetch('/api/dashboard/summary', { token }),
+        apiFetch('/api/device/latest', { token }),
       ])
 
-      if (sumRes.ok) setSummary(await sumRes.json())
-      if (devRes.ok) {
-        const data = await devRes.json()
-        setDevices(Array.isArray(data) ? data : [])
-      }
+      setSummary(summaryData)
+      setDevices(Array.isArray(deviceData) ? deviceData : [])
       setLastUpdate(new Date())
-    } catch (e) {
-      console.error('Dashboard fetch error:', e)
+    } catch (error) {
+      console.error('Dashboard fetch error:', error)
+
+      if (error.status === 401) {
+        onUnauthorized?.()
+        return
+      }
+
+      setError(getErrorMessage(error, 'Gagal memuat data dashboard.'))
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, onUnauthorized])
 
   useEffect(() => {
     fetchData()
@@ -50,6 +56,16 @@ export default function Dashboard({ token }) {
       <div className="loading-screen">
         <div className="spinner" />
         <p>Menghubungkan ke sistem...</p>
+      </div>
+    )
+  }
+
+  if (error && !summary) {
+    return (
+      <div className="card empty-state">
+        <AlertTriangle size={40} color="var(--accent-red)" />
+        <h3>Dashboard belum bisa dimuat</h3>
+        <p>{error}</p>
       </div>
     )
   }
@@ -104,6 +120,12 @@ export default function Dashboard({ token }) {
 
       {/* ── Summary Strip ── */}
       <div className="summary-strip">
+        {error && (
+          <div className="summary-item" style={{ color: 'var(--accent-red)' }}>
+            <AlertTriangle size={16} color="var(--accent-red)" />
+            <span>{error}</span>
+          </div>
+        )}
         <div className="summary-item">
           <Lightbulb size={16} color="var(--accent-green)" />
           <span><strong>{lampuMenyala}</strong> Lampu Menyala</span>

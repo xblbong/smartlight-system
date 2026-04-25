@@ -57,19 +57,23 @@ class SensorController extends Controller
         // 3. Update / Insert Cache (Data terbaru per zona)
         $is_faulty = ($request->current < 10 && $request->powerLampu > 0);
 
-        DB::table('device_status_cache')->updateOrInsert(
+        $now = now();
+
+        DB::table('device_status_cache')->upsert(
             [
-                'device_id' => $request->device_id,
-                'zone'      => $request->zone,
+                [
+                    'device_id'    => $request->device_id,
+                    'zone'         => $request->zone,
+                    'last_lux'     => $request->lux,
+                    'last_power'   => $request->powerLampu,
+                    'last_kondisi' => $request->kondisi,
+                    'is_faulty'    => $is_faulty,
+                    'created_at'   => $now,
+                    'updated_at'   => $now,
+                ],
             ],
-            [
-                'last_lux'     => $request->lux,
-                'last_power'   => $request->powerLampu,
-                'last_kondisi' => $request->kondisi,
-                'is_faulty'    => $is_faulty,
-                'updated_at'   => now(),
-                'created_at'   => DB::raw('COALESCE(created_at, NOW())'),
-            ]
+            ['device_id', 'zone'],
+            ['last_lux', 'last_power', 'last_kondisi', 'is_faulty', 'updated_at']
         );
 
         return response()->json([

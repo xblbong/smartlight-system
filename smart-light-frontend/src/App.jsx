@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom'
 import { LayoutDashboard, SlidersHorizontal, Activity, BarChart3, LogOut, Wifi } from 'lucide-react'
 import Login from './Login'
@@ -7,6 +7,7 @@ import ControlCenter from './pages/ControlCenter'
 import ThresholdSettings from './pages/ThresholdSettings'
 import Analytics from './pages/Analytics'
 import ubLogo from './assets/logo.png'
+import { apiFetch, getErrorMessage } from './lib/api'
 import './index.css'
 
 // ─── Sidebar Component ───────────────────────────────────────
@@ -93,40 +94,101 @@ export default function App() {
     const raw = localStorage.getItem('auth_user')
     try { return raw ? JSON.parse(raw) : null } catch { return null }
   })
+  const [authReady, setAuthReady] = useState(() => !localStorage.getItem('auth_token'))
+  const [authMessage, setAuthMessage] = useState('')
 
-  const handleLoginSuccess = (newToken, newUser) => {
-    setToken(newToken)
-    setUser(newUser)
-  }
-
-  const handleLogout = async () => {
-    try {
-      await fetch('/api/logout', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json'
-        }
-      })
-    } catch { /* ignore */ }
+  const clearAuth = useCallback((message = '') => {
     localStorage.removeItem('auth_token')
     localStorage.removeItem('auth_user')
     setToken(null)
     setUser(null)
+    setAuthMessage(message)
+    setAuthReady(true)
+  }, [])
+
+  const handleLoginSuccess = (newToken, newUser) => {
+    setAuthMessage('')
+    setAuthReady(true)
+    setToken(newToken)
+    setUser(newUser)
+  }
+
+  const handleSessionExpired = useCallback((message = 'Sesi login berakhir. Silakan masuk kembali.') => {
+    clearAuth(message)
+  }, [clearAuth])
+
+  useEffect(() => {
+    if (!token) {
+      setAuthReady(true)
+      return
+    }
+
+    let active = true
+    setAuthReady(false)
+
+    apiFetch('/api/me', { token })
+      .then(data => {
+        if (!active) return
+
+        if (data?.user) {
+          localStorage.setItem('auth_user', JSON.stringify(data.user))
+          setUser(data.user)
+        }
+
+        setAuthMessage('')
+        setAuthReady(true)
+      })
+      .catch(error => {
+        if (!active) return
+
+        if (error.status === 401) {
+          handleSessionExpired('Token login tidak valid atau sudah kadaluarsa. Silakan login ulang.')
+          return
+        }
+
+        setAuthMessage(getErrorMessage(error, 'Backend tidak dapat diverifikasi saat aplikasi dibuka.'))
+        setAuthReady(true)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [token, handleSessionExpired])
+
+  const handleLogout = async () => {
+    try {
+      await apiFetch('/api/logout', {
+        method: 'POST',
+        token,
+      })
+    } catch { /* ignore */ }
+    clearAuth()
+  }
+
+  if (token && !authReady) {
+    return (
+      <div className="loading-screen">
+        <div className="spinner" />
+        <p>Memverifikasi sesi login...</p>
+      </div>
+    )
   }
 
   return (
     <BrowserRouter>
       {!token ? (
-        <Login onLoginSuccess={handleLoginSuccess} />
+        <Login
+          onLoginSuccess={handleLoginSuccess}
+          initialError={authMessage}
+        />
       ) : (
         <MainLayout user={user} onLogout={handleLogout}>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard token={token} />} />
-            <Route path="/control" element={<ControlCenter token={token} />} />
-            <Route path="/settings" element={<ThresholdSettings token={token} />} />
-            <Route path="/analytics" element={<Analytics token={token} />} />
+            <Route path="/dashboard" element={<Dashboard token={token} onUnauthorized={handleSessionExpired} />} />
+            <Route path="/control" element={<ControlCenter token={token} onUnauthorized={handleSessionExpired} />} />
+            <Route path="/settings" element={<ThresholdSettings token={token} onUnauthorized={handleSessionExpired} />} />
+            <Route path="/analytics" element={<Analytics token={token} onUnauthorized={handleSessionExpired} />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </MainLayout>
