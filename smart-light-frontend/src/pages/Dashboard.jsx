@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Wifi, Lightbulb, User, Activity, AlertTriangle, Zap, Gauge } from 'lucide-react'
+import { Wifi, Lightbulb, User, Activity, AlertTriangle, Zap, Gauge, Sun } from 'lucide-react'
 import { apiFetch, getErrorMessage } from '../lib/api'
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -12,24 +12,37 @@ function getKondisiStyle(kondisi) {
   return { background: '#f3f4f6', color: '#4b5563' }
 }
 
+const ZONE_NAMES = {
+  'A': 'Bundaran UB', 'B': 'Gerbang Rektorat', 'C': 'Jalur Fak. Vokasi',
+  'D': 'Taman Graha', 'E': 'Parkir Utama',
+}
+
+// Jumlah lampu per zona (sesuai denah maket)
+const ZONE_LAMPS = {
+  'A': 8, 'B': 6, 'C': 4, 'D': 6, 'E': 4,
+}
+
 export default function Dashboard({ token, onUnauthorized }) {
   const [summary, setSummary] = useState(null)
   const [devices, setDevices] = useState([])
   const [loading, setLoading] = useState(true)
   const [lastUpdate, setLastUpdate] = useState(null)
   const [error, setError] = useState('')
+  const [threshold, setThreshold] = useState(null)
 
   const fetchData = useCallback(async () => {
     try {
       setError('')
 
-      const [summaryData, deviceData] = await Promise.all([
+      const [summaryData, deviceData, settingsData] = await Promise.all([
         apiFetch('/api/dashboard/summary', { token }),
         apiFetch('/api/device/latest', { token }),
+        apiFetch('/api/settings', { token }),
       ])
 
       setSummary(summaryData)
       setDevices(Array.isArray(deviceData) ? deviceData : [])
+      if (settingsData?.ldr_sensitivity) setThreshold(parseInt(settingsData.ldr_sensitivity))
       setLastUpdate(new Date())
     } catch (error) {
       console.error('Dashboard fetch error:', error)
@@ -77,9 +90,28 @@ export default function Dashboard({ token, onUnauthorized }) {
   const avgLux         = summary?.avg_lux          || 0
   const avgCurrent     = summary?.avg_current      || 0
 
-  // Efficiency: ratio of lights off (energy saving)
-  const eff = activeUnits > 0
-    ? Math.round(((activeUnits - lampuMenyala) / activeUnits) * 100)
+  // Deteksi offline: jika data terakhir lebih dari 3 menit yang lalu
+  // Menggunakan sensor timestamp (dari simulator, timezone lokal) untuk akurasi
+  const isOffline = (latestData) => {
+    if (!latestData) return false
+    const ts = latestData.timestamp || latestData.cache_updated_at
+    if (!ts) return false
+    // Tambah 'Z' jika belum ada timezone info agar diparsing konsisten
+    const tsStr = String(ts)
+    const parsed = tsStr.includes('Z') || tsStr.includes('+') ? new Date(tsStr) : new Date(tsStr + '+07:00')
+    const diff = Date.now() - parsed.getTime()
+    return diff > 3 * 60 * 1000
+  }
+
+  const offlineCount = devices.filter(d => isOffline(d.latest_data)).length
+  const onlineDevices = devices.filter(d => !isOffline(d.latest_data))
+
+  // Efficiency: recalculate from online devices only (avoid stale cache mismatch)
+  const onlineMenyala = onlineDevices.filter(d => d.latest_data?.powerLampu > 0).length
+  const onlineMati    = onlineDevices.filter(d => !d.latest_data?.powerLampu || d.latest_data?.powerLampu === 0).length
+  const healthyUnits  = onlineDevices.length - faultyUnits
+  const eff = healthyUnits > 0
+    ? Math.max(0, Math.round(((healthyUnits - onlineMenyala) / healthyUnits) * 100))
     : 0
 
   return (
@@ -88,32 +120,32 @@ export default function Dashboard({ token, onUnauthorized }) {
       <div className="page-header">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--accent-blue)' }}>Real-time Dashboard</span>
+            <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--accent-blue)' }}>Dashboard Real-time</span>
             <span className="status-badge" style={{ background: '#f3f4f6', color: '#6b7280' }}>
               <Activity size={12} />
-              {lastUpdate ? `Updated ${lastUpdate.toLocaleTimeString('id-ID')}` : 'SYNCING...'}
+              {lastUpdate ? `Diperbarui ${lastUpdate.toLocaleTimeString('id-ID')}` : 'SINKRONISASI...'}
             </span>
           </div>
           <div className="page-title-wrap">
-            <h4>OVERVIEW</h4>
-            <h1>Campus Sentinel</h1>
+            <h4>RINGKASAN</h4>
+            <h1>Monitoring Kampus</h1>
           </div>
         </div>
 
         <div className="header-actions">
           <div className="kpi-box">
-            <div className="kpi-box-label">ACTIVE UNITS</div>
-            <div className="kpi-box-val">{activeUnits}/{totalUnits || activeUnits}</div>
+            <div className="kpi-box-label">ZONA AKTIF</div>
+            <div className="kpi-box-val">{onlineDevices.length > 0 ? onlineDevices.length : devices.length} Zona</div>
           </div>
           <div className="kpi-box">
-            <div className="kpi-box-label">FAULTY</div>
+            <div className="kpi-box-label">RUSAK</div>
             <div className="kpi-box-val" style={{ color: faultyUnits > 0 ? 'var(--accent-red)' : 'var(--accent-green)' }}>
-              {faultyUnits} Unit{faultyUnits !== 1 ? 's' : ''}
+              {faultyUnits} Unit
             </div>
           </div>
           <div className="kpi-box">
-            <div className="kpi-box-label">EFFICIENCY</div>
-            <div className="kpi-box-val green">{eff}% Energy</div>
+            <div className="kpi-box-label">EFISIENSI</div>
+            <div className="kpi-box-val green">{eff}% Hemat</div>
           </div>
         </div>
       </div>
@@ -128,11 +160,11 @@ export default function Dashboard({ token, onUnauthorized }) {
         )}
         <div className="summary-item">
           <Lightbulb size={16} color="var(--accent-green)" />
-          <span><strong>{lampuMenyala}</strong> Lampu Menyala</span>
+          <span><strong>{onlineMenyala}</strong> Lampu Menyala</span>
         </div>
         <div className="summary-item">
           <Lightbulb size={16} color="var(--text-muted)" />
-          <span><strong>{summary?.lampu_mati || 0}</strong> Lampu Mati</span>
+          <span><strong>{onlineMati}</strong> Lampu Mati</span>
         </div>
         <div className="summary-item">
           <Gauge size={16} color="var(--accent-blue)" />
@@ -142,6 +174,12 @@ export default function Dashboard({ token, onUnauthorized }) {
           <Zap size={16} color="var(--accent-orange)" />
           <span>Avg Arus: <strong>{avgCurrent} mA</strong></span>
         </div>
+        {threshold && (
+          <div className="summary-item" style={{ borderLeft: '2px solid var(--accent-blue)', paddingLeft: '12px' }}>
+            <Sun size={16} color="var(--accent-blue)" />
+            <span>LDR Threshold: <strong>{threshold} lux</strong> — Lampu nyala jika lux &lt; {threshold}</span>
+          </div>
+        )}
       </div>
 
       {/* ── Zone Cards Grid ── */}
@@ -157,7 +195,8 @@ export default function Dashboard({ token, onUnauthorized }) {
           const isOff      = d.powerLampu === 0
           const isRedup    = d.powerLampu > 0 && d.powerLampu < 200
           const isFull     = d.powerLampu >= 200
-          const stateLabel = isOff ? 'OFF' : (isRedup ? 'REDUP' : 'TERANG')
+          const offline    = isOffline(d)
+          const stateLabel = offline ? 'OFFLINE' : isOff ? 'OFF' : (isRedup ? 'REDUP' : 'TERANG')
           const powerPct   = Math.min(100, Math.round((d.powerLampu / 255) * 100))
           const isFaulty   = d.is_faulty
 
@@ -165,14 +204,15 @@ export default function Dashboard({ token, onUnauthorized }) {
             <div
               key={`${dev.device_id}-${dev.zone}-${idx}`}
               className={`card zone-card ${isFaulty ? 'zone-faulty' : ''}`}
+              style={offline ? { opacity: 0.55 } : {}}
             >
               {/* Header */}
               <div className="zc-header">
                 <div>
                   <div className="zc-id">ZONE {dev.zone} • {dev.device_id}</div>
-                  <div className="zc-name">{dev.zone_name || `Lokasi ${idx + 1}`}</div>
+                  <div className="zc-name">{ZONE_NAMES[dev.zone] || `Area ${dev.device_id} Z-${dev.zone}`}</div>
                 </div>
-                <div className={`zc-icon ${!isOff ? 'on' : 'off'}`}>
+                <div className={`zc-icon ${offline ? 'off' : !isOff ? 'on' : 'off'}`}>
                   <Lightbulb size={20} />
                 </div>
               </div>
@@ -188,7 +228,7 @@ export default function Dashboard({ token, onUnauthorized }) {
               <div>
                 <div className="zc-state-row">
                   <span className="zc-state-label">STATE:</span>
-                  <span className={`zc-state-badge ${stateLabel}`}>{stateLabel}</span>
+                  <span className={`zc-state-badge ${offline ? 'OFF' : stateLabel}`}>{stateLabel}</span>
                   <span className="zc-power-pct">{powerPct}%</span>
                 </div>
                 <div className="zc-progress-bg">
@@ -196,7 +236,7 @@ export default function Dashboard({ token, onUnauthorized }) {
                     className="zc-progress-fill"
                     style={{
                       width: `${powerPct}%`,
-                      background: isOff ? '#d1d5db' : isFaulty ? '#ef4444' : isFull ? 'var(--accent-blue)' : '#60a5fa'
+                      background: offline ? '#9ca3af' : isOff ? '#d1d5db' : isFaulty ? '#ef4444' : isFull ? 'var(--accent-blue)' : '#60a5fa'
                     }}
                   />
                 </div>
@@ -217,15 +257,22 @@ export default function Dashboard({ token, onUnauthorized }) {
                   <div className="zc-metric-val">{d.lux != null ? `${d.lux} lx` : '-'}</div>
                 </div>
                 <div className="zc-metric-box">
-                  <div className="zc-metric-label">JARAK</div>
-                  <div className="zc-metric-val">{d.jarak != null ? `${d.jarak} cm` : '-'}</div>
-                </div>
-                <div className="zc-metric-box">
                   <div className="zc-metric-label">ARUS</div>
                   <div className={`zc-metric-val ${isFaulty ? 'faulty' : ''}`}>
                     {d.current != null ? `${d.current} mA` : '-'}
                   </div>
                 </div>
+              </div>
+
+              {/* Lamp Count per Zone */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: isOff ? '#f3f4f6' : '#f0fdf4', borderRadius: '8px', fontSize: '12px', marginBottom: '8px' }}>
+                <Lightbulb size={14} color={isOff ? 'var(--text-muted)' : 'var(--accent-green)'} />
+                <span style={{ fontWeight: '600', color: isOff ? 'var(--text-muted)' : 'var(--accent-green)' }}>
+                  {isOff ? '0' : ZONE_LAMPS[dev.zone] || 2} / {ZONE_LAMPS[dev.zone] || 2} lampu {isOff ? 'mati' : (isFull ? 'nyala terang' : 'nyala redup')}
+                </span>
+                <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  @ {powerPct}% intensitas
+                </span>
               </div>
 
               {/* Presence Indicator */}

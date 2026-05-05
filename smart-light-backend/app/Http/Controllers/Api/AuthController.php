@@ -10,6 +10,15 @@ use App\Models\User;
 class AuthController extends Controller
 {
     /**
+     * Normalize role ke format lowercase_underscore.
+     * DB mungkin simpan 'ADMIN SARPRAS' → jadi 'admin_sarpras'
+     */
+    private function normalizeRole(?string $role): string
+    {
+        if (!$role) return 'admin_sarpras';
+        return strtolower(str_replace(' ', '_', trim($role)));
+    }
+    /**
      * Login admin dan kembalikan token Sanctum.
      * POST /api/login
      */
@@ -45,6 +54,7 @@ class AuthController extends Controller
                 'id'    => $user->id,
                 'name'  => $user->name,
                 'email' => $user->email,
+                'role'  => $this->normalizeRole($user->role),
             ],
         ], 200);
     }
@@ -69,9 +79,15 @@ class AuthController extends Controller
      */
     public function me(Request $request)
     {
+        $user = $request->user();
         return response()->json([
             'status' => 'success',
-            'user'   => $request->user(),
+            'user'   => [
+                'id'    => $user->id,
+                'name'  => $user->name,
+                'email' => $user->email,
+                'role'  => $this->normalizeRole($user->role),
+            ],
         ]);
     }
 }

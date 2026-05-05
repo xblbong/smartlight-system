@@ -154,6 +154,7 @@ class SensorController extends Controller
                 'sl.powerLampu',
                 'sl.timestamp',
                 'dsc.is_faulty',
+                'dsc.updated_at as cache_updated_at',
                 'sl.created_at as updated_at'
             )
             ->orderBy('sl.device_id')
@@ -163,34 +164,35 @@ class SensorController extends Controller
         $formatted = $logs->map(function ($item) {
             // Mapping zone_name: zone code → nama lokasi (sesuai ESP32 ZoneConfig)
             static $zoneNames = [
-                'A' => 'Lokasi 1',
-                'B' => 'Lokasi 2',
-                'C' => 'Lokasi 3',
-                'D' => 'Lokasi 4',
+            'A' => 'Lokasi 1',
+            'B' => 'Lokasi 2',
+            'C' => 'Lokasi 3',
+            'D' => 'Lokasi 4',
             ];
 
             return [
                 'device_id' => $item->device_id,
-                'zone'      => $item->zone,
+                'zone' => $item->zone,
                 'zone_name' => $zoneNames[$item->zone] ?? ('Lokasi ' . $item->zone),
                 'latest_data' => [
-                    'lux'             => round((float) $item->lux, 1),
-                    'jarak'           => round((float) $item->jarak, 1),
-                    'sedangAdaOrang'  => (bool) $item->sedangAdaOrang,
+                    'lux' => round((float) $item->lux, 1),
+                    'jarak' => round((float) $item->jarak, 1),
+                    'sedangAdaOrang' => (bool) $item->sedangAdaOrang,
                     'masihMasaTunggu' => (bool) $item->masihMasaTunggu,
-                    'tombol'          => (bool) $item->tombol,
-                    'voltage'         => (float) $item->voltage,
-                    'current'         => (float) $item->current,
-                    'sensor_status'   => [
-                        'ldr'        => $item->ldr_status        ?? 'OK',
+                    'tombol' => (bool) $item->tombol,
+                    'voltage' => (float) $item->voltage,
+                    'current' => (float) $item->current,
+                    'sensor_status' => [
+                        'ldr' => $item->ldr_status ?? 'OK',
                         'ultrasonic' => $item->ultrasonic_status ?? 'OK',
-                        'ina219'     => $item->ina219_status     ?? 'N/A',  // Belum siap
+                        'ina219' => $item->ina219_status ?? 'N/A',  // Belum siap
                     ],
-                    'trigger'    => $item->trigger,
-                    'kondisi'    => $item->kondisi,
+                    'trigger' => $item->trigger,
+                    'kondisi' => $item->kondisi,
                     'powerLampu' => (int) $item->powerLampu,
-                    'is_faulty'  => false,  // INA219 belum siap, selalu false
-                    'timestamp'  => $item->timestamp,
+                    'is_faulty' => false,  //(bool) $item->is_faulty INA219 belum siap, selalu false
+                    'timestamp' => $item->timestamp,
+                    'cache_updated_at' => $item->cache_updated_at,
                 ],
             ];
         });
