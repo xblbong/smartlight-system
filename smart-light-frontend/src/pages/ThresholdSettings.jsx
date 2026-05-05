@@ -14,8 +14,8 @@ function InlineAlert({ type, message }) {
 }
 
 export default function ThresholdSettings({ token, onUnauthorized }) {
-  const [settings, setSettings] = useState({ ldr_sensitivity: 420, pir_delay: 15 })
-  const [rawInput, setRawInput] = useState('420')
+  const [settings, setSettings] = useState({ ldr_sensitivity: 20, pir_delay: 15 })
+  const [rawInput, setRawInput] = useState('20')
   const [inputError, setInputError] = useState('')
   const [saving, setSaving]     = useState(false)
   const [alertMsg, setAlertMsg] = useState('')
@@ -60,9 +60,9 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
     setRawInput(val)
     const n = parseInt(val)
     if (isNaN(n) || val.trim() === '') {
-      setInputError('Input harus angka antara 0–1024')
-    } else if (n < 0 || n > 1024) {
-      setInputError('Nilai harus antara 0 dan 1024')
+      setInputError('Input harus angka antara 0–500 lux')
+    } else if (n < 0 || n > 500) {
+      setInputError('Nilai harus antara 0 dan 500 lux')
     } else {
       setInputError('')
       setSettings(s => ({ ...s, ldr_sensitivity: n }))
@@ -103,13 +103,13 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
   }
 
   const handleReset = () => {
-    setSettings({ ldr_sensitivity: 420, pir_delay: 15 })
-    setRawInput('420')
+    setSettings({ ldr_sensitivity: 20, pir_delay: 15 })
+    setRawInput('20')
     setInputError('')
   }
 
-  // Efficiency estimate based on threshold
-  const effPct = Math.round(60 + (settings.ldr_sensitivity / 1024) * 30)
+  // Efficiency estimate based on threshold (outdoor: 20-500 lux range)
+  const effPct = Math.round(60 + (settings.ldr_sensitivity / 500) * 30)
 
   return (
     <div>
@@ -154,13 +154,14 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
               type="range"
               className="range-slider"
               min="0"
-              max="1024"
+              max="500"
               value={settings.ldr_sensitivity}
               onChange={e => handleSliderChange(e.target.value)}
             />
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>
-              <span>DARK (0)</span>
-              <span>DIRECT SUN (1024)</span>
+              <span>GELAP (0 lux)</span>
+              <span style={{ color: 'var(--accent-orange)' }}>STANDAR MIN (20 lux)</span>
+              <span>SENJA (500 lux)</span>
             </div>
           </div>
 
@@ -174,10 +175,10 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
               className={`form-input${inputError ? ' is-error' : ''}`}
               value={rawInput}
               min="0"
-              max="1024"
+              max="500"
               onChange={e => handleInputChange(e.target.value)}
               style={{ padding: '12px', fontSize: '16px' }}
-              placeholder="0 – 1024"
+              placeholder="0 – 500 lux"
             />
             {inputError && (
               <p className="field-error-text" style={{ fontSize: '12px', color: 'var(--accent-red)', marginTop: '6px', display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -200,7 +201,10 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
           <div style={{ marginTop: '32px', padding: '16px', background: 'rgba(255,255,255,0.08)', borderRadius: '10px' }}>
             <div style={{ fontSize: '11px', color: '#93c5fd', marginBottom: '8px' }}>THRESHOLD PREVIEW</div>
             <div style={{ fontSize: '13px', color: 'white' }}>
-              Lampu menyala saat lux &lt; <strong>{settings.ldr_sensitivity}</strong> dan jarak &lt; 30 cm
+              Lampu menyala saat lux &lt; <strong>{settings.ldr_sensitivity} lx</strong> dan ada objek &lt; 30 cm
+            </div>
+            <div style={{ fontSize: '11px', color: '#93c5fd', marginTop: '6px' }}>
+              ※ Standar minimum outdoor = 20 lux
             </div>
           </div>
         </div>

@@ -170,7 +170,7 @@ export default function Dashboard({ token, onUnauthorized }) {
               <div className="zc-header">
                 <div>
                   <div className="zc-id">ZONE {dev.zone} • {dev.device_id}</div>
-                  <div className="zc-name">Area {dev.device_id} Z-{dev.zone}</div>
+                  <div className="zc-name">{dev.zone_name || `Lokasi ${idx + 1}`}</div>
                 </div>
                 <div className={`zc-icon ${!isOff ? 'on' : 'off'}`}>
                   <Lightbulb size={20} />

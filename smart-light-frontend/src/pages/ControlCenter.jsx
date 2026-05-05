@@ -158,7 +158,10 @@ export default function ControlCenter({ token, onUnauthorized }) {
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>
-                      Zone {dev.zone} — {dev.device_id}
+                      {dev.zone_name || `Lokasi ${idx + 1}`}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                      Zone {dev.zone} • {dev.device_id}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       <span className={`control-status-chip ${isOn ? 'on' : 'off'}`}>

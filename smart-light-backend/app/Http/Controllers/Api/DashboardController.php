@@ -20,8 +20,9 @@ class DashboardController extends Controller
         $devices        = Device::count();
         $cache          = DB::table('device_status_cache')->get();
         $active_devices = $cache->count();
-        $faulty_devices = $cache->where('is_faulty', true)->count();
-        $avg_lux        = round($cache->avg('last_lux') ?? 0, 1);
+        // INA219 belum siap → faulty selalu 0 sampai sensor terpasang
+        $faulty_devices = 0;
+        $avg_lux        = round((float) ($cache->avg('last_lux') ?? 0), 1);
         $lampu_menyala  = $cache->where('last_power', '>', 0)->count();
         $lampu_mati     = $cache->where('last_power', 0)->count();
 
