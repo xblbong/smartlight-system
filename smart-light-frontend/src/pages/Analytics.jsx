@@ -89,7 +89,7 @@ function exportToPDF(data, summary, filterZone, filterDevice) {
         <td><span style="background:#eff6ff;color:#1d4ed8;padding:2px 6px;border-radius:4px;font-size:11px">Zone ${row.zone || ''}</span></td>
         <td>${parseFloat(row.lux || 0).toFixed(1)}</td>
         <td>${parseFloat(row.jarak || 0).toFixed(1)}</td>
-        <td style="color:${isFaulty ? '#dc2626' : 'inherit'};font-weight:${isFaulty ? '700' : '400'}">${parseFloat(row.current || 0).toFixed(1)}${isFaulty ? ' ⚠' : ''}</td>
+        <td style="color:${isFaulty ? '#dc2626' : 'inherit'};font-weight:${isFaulty ? '700' : '400'}">${parseFloat(row.current || 0).toFixed(1)}${isFaulty ? ' (!)' : ''}</td>
         <td>${row.powerLampu || 0}</td>
         <td style="color:${kondisiColor};font-weight:600">${row.kondisi || '-'}</td>
       </tr>`
@@ -151,14 +151,29 @@ function exportToPDF(data, summary, filterZone, filterDevice) {
   win.document.close()
 }
 
+// Zone name mapping (sesuai simulator)
+const ZONE_NAMES = {
+  'A': 'Bundaran UB',
+  'B': 'Gerbang Rektorat',
+  'C': 'Jalur Fak. Vokasi',
+  'D': 'Taman Graha',
+  'E': 'Parkir Utama',
+}
+
+const ZONE_LAMPS = {
+  'A': 8, 'B': 6, 'C': 4, 'D': 6, 'E': 4,
+}
+
 // ────────────────────────────────────────────────────────────────────
 export default function Analytics({ token, onUnauthorized }) {
   const [history, setHistory]         = useState([])
   const [loading, setLoading]         = useState(true)
   const [summary, setSummary]         = useState(null)
+  const [efficiency, setEfficiency]   = useState(null)
   const [filterZone, setFilterZone]   = useState('')
   const [filterDevice, setFilterDevice] = useState('')
-  const [exporting, setExporting]     = useState('')  // 'pdf' | 'excel' | ''
+  const [filterMonth, setFilterMonth] = useState('')
+  const [exporting, setExporting]     = useState('')
   const [error, setError]             = useState('')
 
   const fetchData = useCallback(async () => {
@@ -167,14 +182,20 @@ export default function Analytics({ token, onUnauthorized }) {
       const params = new URLSearchParams({ limit: 500 })
       if (filterZone)   params.set('zone', filterZone)
       if (filterDevice) params.set('device_id', filterDevice)
+      if (filterMonth)  params.set('month', filterMonth)
 
-      const [historyData, summaryData] = await Promise.all([
+      const effParams = new URLSearchParams()
+      if (filterMonth) effParams.set('month', filterMonth)
+
+      const [historyData, summaryData, effData] = await Promise.all([
         apiFetch(`/api/device/history?${params}`, { token }),
         apiFetch('/api/dashboard/summary', { token }),
+        apiFetch(`/api/analytics/efficiency?${effParams}`, { token }),
       ])
 
       setHistory(Array.isArray(historyData) ? historyData : [])
       setSummary(summaryData)
+      setEfficiency(effData)
     } catch (error) {
       console.error('Analytics fetch error:', error)
 
@@ -187,7 +208,7 @@ export default function Analytics({ token, onUnauthorized }) {
     } finally {
       setLoading(false)
     }
-  }, [token, filterZone, filterDevice, onUnauthorized])
+  }, [token, filterZone, filterDevice, filterMonth, onUnauthorized])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -223,14 +244,14 @@ export default function Analytics({ token, onUnauthorized }) {
       <div className="page-header" style={{ marginBottom: '28px' }}>
         <div>
           <div className="page-title-wrap">
-            <h4>PERFORMANCE AUDIT</h4>
-            <h1>Analytics &amp; Reports</h1>
+            <h4>AUDIT PERFORMA</h4>
+            <h1>Analitik &amp; Laporan</h1>
           </div>
           <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: 'var(--text-secondary)', marginTop: '10px', flexWrap: 'wrap' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <FileText size={13} /> Live Data ({history.length} entri tersimpan)
+              <FileText size={13} /> Data Langsung ({history.length} entri tersimpan)
             </span>
-            <span>Refresh: {new Date().toLocaleTimeString('id-ID')}</span>
+            <span>Terakhir: {new Date().toLocaleTimeString('id-ID')}</span>
             {error && (
               <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626' }}>
                 <AlertTriangle size={13} /> {error}
@@ -240,7 +261,7 @@ export default function Analytics({ token, onUnauthorized }) {
         </div>
         <div className="header-actions">
           <button className="btn btn-outline" onClick={fetchData} disabled={loading}>
-            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
+            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Segarkan
           </button>
           <button
             className="btn btn-outline"
@@ -249,7 +270,7 @@ export default function Analytics({ token, onUnauthorized }) {
             style={{ borderColor: '#ef4444', color: '#ef4444' }}
           >
             <Download size={14} />
-            {exporting === 'pdf' ? 'Membuat PDF...' : 'Export PDF'}
+            {exporting === 'pdf' ? 'Membuat PDF...' : 'Ekspor PDF'}
           </button>
           <button
             className="btn btn-primary"
@@ -258,7 +279,7 @@ export default function Analytics({ token, onUnauthorized }) {
             style={{ background: '#166534' }}
           >
             <Table2 size={14} />
-            {exporting === 'excel' ? 'Mengunduh...' : 'Export Excel (CSV)'}
+            {exporting === 'excel' ? 'Mengunduh...' : 'Ekspor Excel (CSV)'}
           </button>
         </div>
       </div>
@@ -269,11 +290,30 @@ export default function Analytics({ token, onUnauthorized }) {
         <select
           className="form-input"
           style={{ width: 'auto', minWidth: '140px', padding: '8px 12px', fontSize: '13px' }}
+          value={filterMonth}
+          onChange={e => setFilterMonth(e.target.value)}
+        >
+          <option value="">Semua Bulan</option>
+          {(() => {
+            const months = []
+            const now = new Date()
+            for (let i = 0; i < 6; i++) {
+              const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+              const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+              const label = d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+              months.push(<option key={val} value={val}>{label}</option>)
+            }
+            return months
+          })()}
+        </select>
+        <select
+          className="form-input"
+          style={{ width: 'auto', minWidth: '140px', padding: '8px 12px', fontSize: '13px' }}
           value={filterZone}
           onChange={e => setFilterZone(e.target.value)}
         >
           <option value="">Semua Zona</option>
-          {zones.map(z => <option key={z} value={z}>Zone {z}</option>)}
+          {zones.map(z => <option key={z} value={z}>Zone {z} — {ZONE_NAMES[z] || z}</option>)}
         </select>
         <select
           className="form-input"
@@ -284,15 +324,15 @@ export default function Analytics({ token, onUnauthorized }) {
           <option value="">Semua Device</option>
           {devs.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
-        {(filterZone || filterDevice) && (
+        {(filterZone || filterDevice || filterMonth) && (
           <button
             className="btn btn-outline"
             style={{ padding: '8px 14px', fontSize: '12px' }}
-            onClick={() => { setFilterZone(''); setFilterDevice('') }}
+            onClick={() => { setFilterZone(''); setFilterDevice(''); setFilterMonth('') }}
           >✕ Reset Filter</button>
         )}
         <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600' }}>
-          Menampilkan {history.length} entri
+          Menampilkan {history.length} log sensor
         </span>
       </div>
 
@@ -302,7 +342,7 @@ export default function Analytics({ token, onUnauthorized }) {
           { label: 'Total Log',       val: history.length,                        color: '#eff6ff', icon: <FileText size={18} /> },
           { label: 'Avg Lux',         val: history.length ? `${(history.reduce((a, b) => a + parseFloat(b.lux || 0), 0) / history.length).toFixed(1)} lx` : '—', color: '#f0fdf4', icon: <Wifi size={18} /> },
           { label: 'Lampu Menyala',   val: summary?.lampu_menyala ?? '—',         color: '#fffbeb', icon: <Clock size={18} /> },
-          { label: 'Faulty Devices',  val: summary?.faulty_devices ?? '—',        color: '#fef2f2', icon: <AlertTriangle size={18} /> },
+          { label: 'Perangkat Rusak',  val: history.filter(h => parseFloat(h.current) < 10 && parseInt(h.powerLampu) > 0).length, color: '#fef2f2', icon: <AlertTriangle size={18} /> },
         ].map(({ label, val, color, icon }) => (
           <div key={label} className="card" style={{ display: 'flex', gap: '14px', alignItems: 'center', padding: '18px' }}>
             <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -321,7 +361,7 @@ export default function Analytics({ token, onUnauthorized }) {
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
             <div>
-              <h3 style={{ fontSize: '15px', marginBottom: '3px' }}>Tren Sensor — Lux &amp; Power</h3>
+              <h3 style={{ fontSize: '15px', marginBottom: '3px' }}>Tren Sensor — Lux &amp; Daya</h3>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>50 data terbaru</p>
             </div>
             <div style={{ display: 'flex', gap: '14px', fontSize: '11px', fontWeight: '600' }}>
@@ -329,70 +369,145 @@ export default function Analytics({ token, onUnauthorized }) {
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-blue)' }} /> Lux
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-green)' }} /> Power (PWM)
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-green)' }} /> Daya (PWM)
               </span>
             </div>
           </div>
           {loading ? (
-            <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div className="spinner" />
             </div>
           ) : chartData.length === 0 ? (
-            <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
+            <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
               Belum ada data historis
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gLux" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="var(--accent-blue)"  stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="var(--accent-blue)"  stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gPower" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="var(--accent-green)" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="var(--accent-green)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#9ca3af' }} interval="preserveStartEnd" />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#9ca3af' }} />
-                <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '12px' }} />
-                <Area type="monotone" dataKey="lux"   stroke="var(--accent-blue)"  fill="url(#gLux)"   strokeWidth={2} name="Lux (lx)" />
-                <Area type="monotone" dataKey="power" stroke="var(--accent-green)" fill="url(#gPower)" strokeWidth={2} name="Power (PWM)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Chart 1: Lux */}
+              <div style={{ height: '140px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--accent-blue)', marginBottom: '8px' }}>Intensitas Cahaya (Lux)</div>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gLux" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="var(--accent-blue)"  stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="var(--accent-blue)"  stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="name" hide />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#9ca3af' }} />
+                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '12px' }} />
+                    <Area type="monotone" dataKey="lux" stroke="var(--accent-blue)" fill="url(#gLux)" strokeWidth={2} name="Lux" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Chart 2: Power (PWM) */}
+              <div style={{ height: '140px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--accent-green)', marginBottom: '8px' }}>Daya Lampu (PWM 0-255)</div>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gPower" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="var(--accent-green)" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="var(--accent-green)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="name" hide />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#9ca3af' }} />
+                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '12px' }} />
+                    <Area type="monotone" dataKey="power" stroke="var(--accent-green)" fill="url(#gPower)" strokeWidth={2} name="Power" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Chart 3: Current (mA) */}
+              <div style={{ height: '140px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#f59e0b', marginBottom: '8px' }}>Arus Konsumsi (mA)</div>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gCurrent" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="#f59e0b" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="name" hide />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#9ca3af' }} />
+                    <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '12px' }} />
+                    <Area type="monotone" dataKey="current" stroke="#f59e0b" fill="url(#gCurrent)" strokeWidth={2} name="Arus (mA)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           )}
         </div>
 
-        {/* Efficiency panel */}
+        {/* Efficiency Comparison Panel */}
         <div className="card" style={{ background: '#0f172a', color: 'white', display: 'flex', flexDirection: 'column' }}>
-          <h4 style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '1px', color: '#94a3b8', marginBottom: '14px' }}>NET EFFICIENCY</h4>
-          <div style={{ fontSize: '52px', fontWeight: '800', lineHeight: '1', marginBottom: '10px' }}>
-            {summary
-              ? `${Math.round(((summary.lampu_mati || 0) / Math.max(summary.active_devices || 1, 1)) * 100)}%`
-              : '—'}
-          </div>
-          <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6', marginBottom: 'auto' }}>
-            Rasio lampu mati vs total zona aktif. Semakin tinggi = lebih hemat energi.
-          </p>
-          <div style={{ marginTop: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ fontSize: '12px', color: '#94a3b8' }}>Total Log Tersimpan</span>
-              <span style={{ fontSize: '16px', fontWeight: '700', color: '#38bdf8' }}>{history.length}</span>
+          <h4 style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '1px', color: '#94a3b8', marginBottom: '14px' }}>PERBANDINGAN EFISIENSI</h4>
+
+          {/* Konvensional vs Smart */}
+          {efficiency ? (
+            <>
+              <div style={{ fontSize: '42px', fontWeight: '800', lineHeight: '1', marginBottom: '6px', color: '#34d399' }}>
+                {efficiency.saving_pct}%
+              </div>
+              <p style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '16px' }}>Penghematan energi vs sistem timer konvensional</p>
+
+              {/* Bars comparison */}
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={11} /> Konvensional (Timer)</span>
+                  <span style={{ color: '#f87171' }}>{efficiency.conventional.monthly_kwh} kWh/bln</span>
+                </div>
+                <div className="zc-progress-bg" style={{ background: 'rgba(255,255,255,0.1)', marginBottom: '8px' }}>
+                  <div className="zc-progress-fill" style={{ width: '100%', background: '#f87171' }} />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Wifi size={11} /> Smart Lighting</span>
+                  <span style={{ color: '#34d399' }}>{efficiency.smart.monthly_kwh} kWh/bln</span>
+                </div>
+                <div className="zc-progress-bg" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                  <div className="zc-progress-fill" style={{ width: `${100 - efficiency.saving_pct}%`, background: '#34d399' }} />
+                </div>
+              </div>
+
+              {/* Detail */}
+              <div style={{ padding: '12px', background: 'rgba(255,255,255,0.06)', borderRadius: '8px', fontSize: '11px', color: '#94a3b8', lineHeight: '1.8' }}>
+                <div style={{ marginBottom: '8px', fontWeight: '700', color: '#94a3b8', fontSize: '10px', letterSpacing: '0.5px' }}>DETAIL PERHITUNGAN</div>
+                <div>Konvensional: <strong style={{ color: '#f87171' }}>{efficiency.conventional.hours_per_day} jam/hari</strong> — {efficiency.conventional.description}</div>
+                <div>Smart: <strong style={{ color: '#34d399' }}>PWM rata-rata {efficiency.smart.avg_pwm}/255 ({efficiency.smart.avg_duty_pct}%)</strong></div>
+                <div>Zona: <strong style={{ color: 'white' }}>{efficiency.total_zones}</strong> × {efficiency.lamps_per_zone} lampu × {efficiency.watts_per_lamp}W</div>
+                <div>Data points: <strong style={{ color: 'white' }}>{efficiency.data_points}</strong></div>
+              </div>
+
+              <div style={{ marginTop: '12px', padding: '10px', background: 'rgba(52,211,153,0.1)', borderRadius: '8px', fontSize: '11px', color: '#34d399', textAlign: 'center' }}>
+                Hemat ≈ <strong>{(efficiency.conventional.monthly_kwh - efficiency.smart.monthly_kwh).toFixed(1)} kWh/bulan</strong>
+              </div>
+            </>
+          ) : (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="spinner" style={{ borderTopColor: '#38bdf8' }} />
             </div>
-            <div className="zc-progress-bg" style={{ background: 'rgba(255,255,255,0.1)' }}>
-              <div className="zc-progress-fill" style={{ width: `${Math.min(100, (history.length / 500) * 100)}%`, background: 'var(--accent-green)' }} />
-            </div>
-            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '5px', letterSpacing: '0.5px', fontWeight: '700' }}>
-              TARGET: 500 DATA POINTS
-            </div>
-          </div>
+          )}
+
           <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(255,255,255,0.06)', borderRadius: '8px', fontSize: '12px', color: '#94a3b8' }}>
-            Device terhubung: <strong style={{ color: 'white' }}>{summary?.total_devices || 0}</strong> unit<br />
-            Zona aktif: <strong style={{ color: 'white' }}>{summary?.active_devices || 0}</strong> zona
+            Device: <strong style={{ color: 'white' }}>{summary?.total_devices || 0}</strong> ESP32<br />
+            Zona aktif: <strong style={{ color: 'white' }}>{summary?.total_zones || summary?.active_devices || 0}</strong> zona
           </div>
         </div>
+      </div>
+
+      {/* ── Keterangan Data ── */}
+      <div className="card" style={{ marginBottom: '20px', padding: '14px 20px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.8' }}>
+        <strong style={{ color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}><Table2 size={14} /> Tentang Data Log:</strong> Tabel di bawah menampilkan riwayat pembacaan sensor secara langsung.
+        Setiap entri mewakili 1 pembacaan sensor (setiap 5 detik per zona). Data ini adalah <strong>log mentah dari perangkat IoT</strong> yang
+        digunakan untuk audit teknis dan analisis efisiensi. {history.length} entri = ±{Math.round(history.length * 5 / 60)} menit data dari {devs.length} perangkat × {zones.length} zona.
       </div>
 
       {/* ── History Table ── */}
@@ -407,16 +522,16 @@ export default function Analytics({ token, onUnauthorized }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
             <thead>
               <tr style={{ background: '#f8fafc', fontSize: '10px', fontWeight: '700', color: 'var(--text-secondary)', letterSpacing: '0.8px' }}>
-                {['#', 'WAKTU', 'DEVICE', 'ZONA', 'LUX', 'JARAK', 'ARUS (mA)', 'PWM', 'KONDISI', 'TRIGGER'].map(h => (
+                {['#', 'WAKTU', 'DEVICE', 'ZONA', 'LAMPU', 'LUX', 'JARAK', 'ORANG', 'ARUS (mA)', 'PWM', 'KONDISI', 'TRIGGER'].map(h => (
                   <th key={h} style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="10" style={{ padding: '40px', textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }} /></td></tr>
+                <tr><td colSpan="12" style={{ padding: '40px', textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }} /></td></tr>
               ) : history.length === 0 ? (
-                <tr><td colSpan="10" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Belum ada data log. Jalankan simulator IoT.</td></tr>
+                <tr><td colSpan="12" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Belum ada data log. Jalankan simulator IoT.</td></tr>
               ) : history.slice(0, 100).map((row, i) => {
                 const isFaulty = parseFloat(row.current) < 10 && parseInt(row.powerLampu) > 0
                 return (
@@ -426,13 +541,21 @@ export default function Analytics({ token, onUnauthorized }) {
                     <td style={{ padding: '9px 14px', fontWeight: '600' }}>{row.device_id}</td>
                     <td style={{ padding: '9px 14px' }}>
                       <span style={{ background: '#eff6ff', color: 'var(--accent-blue)', padding: '2px 8px', borderRadius: '10px', fontWeight: '700', fontSize: '10px' }}>
-                        Zone {row.zone}
+                        {ZONE_NAMES[row.zone] || `Zone ${row.zone}`}
                       </span>
+                    </td>
+                    <td style={{ padding: '9px 14px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      {ZONE_LAMPS[row.zone] || 2} unit
                     </td>
                     <td style={{ padding: '9px 14px' }}>{parseFloat(row.lux || 0).toFixed(1)}</td>
                     <td style={{ padding: '9px 14px' }}>{parseFloat(row.jarak || 0).toFixed(1)} cm</td>
+                    <td style={{ padding: '9px 14px' }}>
+                      <span style={{ fontSize: '10px', fontWeight: '600', padding: '2px 6px', borderRadius: '6px', background: row.sedangAdaOrang ? '#dcfce7' : '#f3f4f6', color: row.sedangAdaOrang ? '#16a34a' : '#9ca3af' }}>
+                        {row.sedangAdaOrang ? 'Ya' : 'Tidak'}
+                      </span>
+                    </td>
                     <td style={{ padding: '9px 14px', color: isFaulty ? 'var(--accent-red)' : 'inherit', fontWeight: isFaulty ? '700' : '400' }}>
-                      {parseFloat(row.current || 0).toFixed(1)}{isFaulty && ' ⚠'}
+                      {parseFloat(row.current || 0).toFixed(1)}{isFaulty && <AlertTriangle size={10} style={{ marginLeft: '4px', verticalAlign: 'middle' }} />}
                     </td>
                     <td style={{ padding: '9px 14px' }}>{row.powerLampu}</td>
                     <td style={{ padding: '9px 14px' }}>

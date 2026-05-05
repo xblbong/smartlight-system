@@ -2,6 +2,16 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { MapPin, AlertTriangle, CheckCircle2, Lightbulb, RefreshCw, Power } from 'lucide-react'
 import { apiFetch, getErrorMessage } from '../lib/api'
 
+const ZONE_NAMES = {
+  'A': 'Bundaran UB', 'B': 'Gerbang Rektorat', 'C': 'Jalur Fak. Vokasi',
+  'D': 'Taman Graha', 'E': 'Parkir Utama',
+}
+
+// Jumlah lampu per zona
+const ZONE_LAMPS = {
+  'A': 8, 'B': 6, 'C': 4, 'D': 6, 'E': 4,
+}
+
 // ─── Toast Notification ──────────────────────────────────────
 function Toast({ toasts, removeToast }) {
   return (
@@ -55,7 +65,7 @@ export default function ControlCenter({ token, onUnauthorized }) {
     return () => clearInterval(id)
   }, [fetchDevices])
 
-  const handleControl = async (deviceId, zone, action) => {
+  const handleControl = async (deviceId, zone, action, silent = false) => {
     const key = `${deviceId}-${zone}`
     setPending(prev => ({ ...prev, [key]: action }))
     try {
@@ -64,15 +74,21 @@ export default function ControlCenter({ token, onUnauthorized }) {
         token,
         body: { device_id: deviceId, zone, action },
       })
-      addToast(`✓ Perintah ${action} dikirim ke Zone ${zone} (${deviceId})`, 'success')
+      if (!silent) {
+        addToast(`✓ Perintah ${action} dikirim ke Zone ${zone} (${deviceId})`, 'success')
+      }
       setTimeout(fetchDevices, 1500)
+      return true
     } catch (error) {
       if (error.status === 401) {
         onUnauthorized?.()
-        return
+        return false
       }
 
-      addToast(getErrorMessage(error, `Gagal mengirim perintah ${action}.`), 'error')
+      if (!silent) {
+        addToast(getErrorMessage(error, `Gagal mengirim perintah ${action}.`), 'error')
+      }
+      return false
     } finally {
       setPending(prev => {
         const copy = { ...prev }
@@ -83,12 +99,24 @@ export default function ControlCenter({ token, onUnauthorized }) {
   }
 
   const handleMasterControl = async (action) => {
-    if (!window.confirm(`Yakin ingin ${action === 'ON' ? 'menyalakan' : 'mematikan'} SEMUA zona?`)) return
-    const results = await Promise.allSettled(
-      devices.map(dev => handleControl(dev.device_id, dev.zone, action))
+    const actionText = action === 'ON' ? 'menyalakan' : action === 'OFF' ? 'mematikan' : 'mengembalikan ke otomatis untuk'
+    if (!window.confirm(`Yakin ingin ${actionText} SEMUA zona?`)) return
+    const results = await Promise.all(
+      devices.map(dev => handleControl(dev.device_id, dev.zone, action, true))
     )
-    const ok = results.filter(r => r.status === 'fulfilled').length
+    const ok = results.filter(Boolean).length
     addToast(`Master ${action}: ${ok}/${devices.length} zona berhasil`, ok === devices.length ? 'success' : 'error')
+  }
+
+  // Deteksi offline: jika data terakhir lebih dari 3 menit yang lalu
+  const isOffline = (latestData) => {
+    if (!latestData) return false
+    const ts = latestData.timestamp || latestData.cache_updated_at
+    if (!ts) return false
+    const tsStr = String(ts)
+    const parsed = tsStr.includes('Z') || tsStr.includes('+') ? new Date(tsStr) : new Date(tsStr + '+07:00')
+    const diff = Date.now() - parsed.getTime()
+    return diff > 3 * 60 * 1000
   }
 
   if (loading) {
@@ -112,12 +140,12 @@ export default function ControlCenter({ token, onUnauthorized }) {
       <div className="page-header" style={{ marginBottom: '32px' }}>
         <div>
           <div className="page-title-wrap">
-            <h4>SYSTEM SENTINEL V4.0</h4>
-            <h1>Manual Control Center</h1>
+            <h4>PUSAT KENDALI</h4>
+            <h1>Kontrol Manual Zona</h1>
           </div>
           <p style={{ maxWidth: '600px', color: 'var(--text-secondary)', lineHeight: '1.6', marginTop: '8px' }}>
-            Override langsung sistem pencahayaan adaptif. Gunakan untuk maintenance,
-            darurat, atau event kampus. Override manual berlaku 4 jam.
+            Kontrol langsung sistem pencahayaan adaptif. Gunakan untuk pemeliharaan,
+            keadaan darurat, atau acara kampus.
           </p>
         </div>
         <button
@@ -125,7 +153,7 @@ export default function ControlCenter({ token, onUnauthorized }) {
           onClick={fetchDevices}
           style={{ alignSelf: 'flex-start', gap: '8px' }}
         >
-          <RefreshCw size={14} /> Refresh
+          <RefreshCw size={14} /> Segarkan
         </button>
       </div>
 
@@ -146,24 +174,32 @@ export default function ControlCenter({ token, onUnauthorized }) {
             const isPend   = !!pending[key]
             const isOn     = d.powerLampu > 0
             const isFaulty = d.is_faulty
+            const offline  = isOffline(d)
 
             return (
               <div
                 key={idx}
                 className={`card control-card ${isFaulty ? 'zone-faulty' : ''}`}
+                style={offline ? { opacity: 0.55 } : {}}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <div className={`ctrl-zone-icon ${isOn ? 'on' : 'off'}`}>
+                  <div className={`ctrl-zone-icon ${offline ? 'off' : isOn ? 'on' : 'off'}`}>
                     <MapPin size={20} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: '700', fontSize: '16px', marginBottom: '4px' }}>
-                      Zone {dev.zone} — {dev.device_id}
+                      {ZONE_NAMES[dev.zone] || `Zone ${dev.zone}`} — {dev.device_id}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span className={`control-status-chip ${isOn ? 'on' : 'off'}`}>
-                        <Lightbulb size={11} /> {d.kondisi || (isOn ? 'NYALA' : 'MATI')}
-                      </span>
+                      {offline ? (
+                        <span className="control-status-chip off" style={{ background: '#9ca3af', color: 'white' }}>
+                          <AlertTriangle size={11} /> OFFLINE
+                        </span>
+                      ) : (
+                        <span className={`control-status-chip ${isOn ? 'on' : 'off'}`}>
+                          <Lightbulb size={11} /> {d.kondisi || (isOn ? 'NYALA' : 'MATI')}
+                        </span>
+                      )}
                       {isFaulty && (
                         <span className="control-status-chip faulty">
                           <AlertTriangle size={11} /> RUSAK
@@ -176,22 +212,43 @@ export default function ControlCenter({ token, onUnauthorized }) {
                   </div>
                 </div>
 
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: isOn ? '#f0fdf4' : '#f3f4f6', borderRadius: '8px', fontSize: '12px', marginBottom: '4px' }}>
+                  <Lightbulb size={13} color={isOn ? 'var(--accent-green)' : 'var(--text-muted)'} />
+                  <span style={{ fontWeight: '600', color: isOn ? 'var(--accent-green)' : 'var(--text-muted)' }}>
+                    {isOn ? (ZONE_LAMPS[dev.zone] || 2) : 0} / {ZONE_LAMPS[dev.zone] || 2} lampu aktif
+                  </span>
+                  {d.kondisi && !d.kondisi.includes('MANUAL') && (
+                    <span style={{ marginLeft: 'auto', fontSize: '10px', fontWeight: '700', color: 'var(--accent-green)', background: '#dcfce7', padding: '2px 8px', borderRadius: '6px' }}>AUTO</span>
+                  )}
+                  {d.kondisi?.includes('MANUAL') && (
+                    <span style={{ marginLeft: 'auto', fontSize: '10px', fontWeight: '700', color: '#d97706', background: '#fef3c7', padding: '2px 8px', borderRadius: '6px' }}>MANUAL</span>
+                  )}
+                </div>
+
                 <div className="control-btns">
                   <button
                     className="btn btn-primary"
-                    disabled={isPend}
+                    disabled={isPend || (!offline && isOn && d.kondisi?.includes('MANUAL'))}
                     onClick={() => handleControl(dev.device_id, dev.zone, 'ON')}
-                    style={{ minWidth: '100px' }}
+                    style={{ minWidth: '100px', opacity: (!offline && isOn && d.kondisi?.includes('MANUAL')) ? 0.4 : 1 }}
                   >
-                    {isPend && pending[key] === 'ON' ? <><div className="spinner-sm" /> Sending...</> : 'FORCE ON'}
+                    {isPend && pending[key] === 'ON' ? <><div className="spinner-sm" /> Mengirim...</> : 'NYALAKAN'}
                   </button>
                   <button
                     className="btn btn-outline"
-                    disabled={isPend}
+                    disabled={isPend || (!offline && !isOn && d.kondisi?.includes('MANUAL'))}
                     onClick={() => handleControl(dev.device_id, dev.zone, 'OFF')}
-                    style={{ minWidth: '100px', background: '#f3f4f6' }}
+                    style={{ minWidth: '100px', background: '#f3f4f6', opacity: (!offline && !isOn && d.kondisi?.includes('MANUAL')) ? 0.4 : 1 }}
                   >
-                    {isPend && pending[key] === 'OFF' ? <><div className="spinner-sm" /> Sending...</> : 'FORCE OFF'}
+                    {isPend && pending[key] === 'OFF' ? <><div className="spinner-sm" /> Mengirim...</> : 'MATIKAN'}
+                  </button>
+                  <button
+                    className="btn btn-outline"
+                    disabled={isPend || (!d.kondisi?.includes('MANUAL'))}
+                    onClick={() => handleControl(dev.device_id, dev.zone, 'AUTO')}
+                    style={{ minWidth: '100px', background: '#e0f2fe', color: '#0369a1', borderColor: '#bae6fd', opacity: (!d.kondisi?.includes('MANUAL')) ? 0.4 : 1 }}
+                  >
+                    {isPend && pending[key] === 'AUTO' ? <><div className="spinner-sm" /> Mengirim...</> : 'AUTO'}
                   </button>
                 </div>
               </div>
@@ -204,30 +261,37 @@ export default function ControlCenter({ token, onUnauthorized }) {
           {/* Master Lockdown */}
           <div className="card" style={{ background: 'var(--sidebar-bg)', color: 'white', border: 'none' }}>
             <AlertTriangle size={28} style={{ marginBottom: '12px', color: '#fbbf24' }} />
-            <h2 style={{ fontSize: '22px', marginBottom: '10px' }}>Master Lockdown</h2>
+            <h2 style={{ fontSize: '22px', marginBottom: '10px' }}>Kontrol Utama</h2>
             <p style={{ fontSize: '13px', color: '#93c5fd', marginBottom: '20px', lineHeight: '1.6' }}>
-              Override serentak seluruh zona kampus. Gunakan hanya dalam situasi keamanan prioritas tinggi.
+              Nyalakan atau matikan semua lampu serentak. Gunakan saat situasi darurat atau pemeliharaan.
             </p>
             <button
               className="btn"
               style={{ background: 'white', color: 'var(--sidebar-bg)', width: '100%', marginBottom: '10px', fontWeight: '700' }}
               onClick={() => handleMasterControl('ON')}
             >
-              ACTIVATE FULL ILLUMINATION
+              NYALAKAN SEMUA
             </button>
             <button
               className="btn"
-              style={{ background: 'rgba(255,255,255,0.1)', color: 'white', width: '100%', border: '1px solid rgba(255,255,255,0.2)' }}
+              style={{ background: 'rgba(255,255,255,0.1)', color: 'white', width: '100%', border: '1px solid rgba(255,255,255,0.2)', marginBottom: '10px' }}
               onClick={() => handleMasterControl('OFF')}
             >
-              GLOBAL SHUTDOWN
+              MATIKAN SEMUA
+            </button>
+            <button
+              className="btn"
+              style={{ background: '#e0f2fe', color: '#0369a1', width: '100%', border: 'none', fontWeight: '600' }}
+              onClick={() => handleMasterControl('AUTO')}
+            >
+              KEMBALIKAN KE AUTO
             </button>
           </div>
 
           {/* Override Summary */}
           <div className="card">
             <h4 style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '1px', marginBottom: '20px', color: 'var(--text-secondary)' }}>
-              OVERRIDE SUMMARY
+              RINGKASAN STATUS
             </h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {[

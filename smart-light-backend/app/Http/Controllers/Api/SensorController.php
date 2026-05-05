@@ -124,6 +124,7 @@ class SensorController extends Controller
                 'sl.powerLampu',
                 'sl.timestamp',
                 'dsc.is_faulty',
+                'dsc.updated_at as cache_updated_at',
                 'sl.created_at as updated_at'
             )
             ->orderBy('sl.device_id')
@@ -147,11 +148,12 @@ class SensorController extends Controller
                         'ultrasonic' => $item->ultrasonic_status ?? 'OK',
                         'ina219'     => $item->ina219_status ?? 'OK',
                     ],
-                    'trigger'    => $item->trigger,
-                    'kondisi'    => $item->kondisi,
-                    'powerLampu' => (int) $item->powerLampu,
-                    'is_faulty'  => (bool) $item->is_faulty,
-                    'timestamp'  => $item->timestamp,
+                    'trigger'          => $item->trigger,
+                    'kondisi'          => $item->kondisi,
+                    'powerLampu'       => (int) $item->powerLampu,
+                    'is_faulty'        => (bool) $item->is_faulty,
+                    'timestamp'        => $item->timestamp,
+                    'cache_updated_at' => $item->cache_updated_at,
                 ],
             ];
         });

@@ -15,13 +15,34 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        // ── Admin Sarpras ── Full Access (Dashboard, Control, Settings, Analytics)
+        User::updateOrCreate(
+            ['email' => 'admin@ub.ac.id'],
+            [
+                'name'     => 'Admin Jaka',
+                'password' => bcrypt('admin123'),
+                'role'     => 'admin_sarpras',
+            ]
+        );
 
-        User::factory()->create([
-            'name' => 'Admin Jaka',
-            'email' => 'admin@ub.ac.id',
-            'password' => bcrypt('admin123'),
-            'role' => 'ADMIN SARPRAS',
-        ]);
+        // ── Teknisi ── Dashboard + Control Center + Threshold Settings
+        User::updateOrCreate(
+            ['email' => 'teknisi@ub.ac.id'],
+            [
+                'name'     => 'Teknisi Budi',
+                'password' => bcrypt('teknisi123'),
+                'role'     => 'teknisi',
+            ]
+        );
+
+        // ── Pimpinan ── Dashboard + Analytics (read-only, untuk evaluasi)
+        User::updateOrCreate(
+            ['email' => 'pimpinan@ub.ac.id'],
+            [
+                'name'     => 'Dr. Suyanto, M.T.',
+                'password' => bcrypt('pimpinan123'),
+                'role'     => 'pimpinan',
+            ]
+        );
     }
 }

@@ -32,8 +32,18 @@ Route::middleware('auth:sanctum')->group(function () {
     // Settings
     Route::get('/settings', [DashboardController::class, 'getSettings']);
     Route::post('/settings', [DashboardController::class, 'saveSettings']);
+
+    // Analytics
+    Route::get('/analytics/efficiency', [DashboardController::class, 'efficiency']);
 });
 
 // ── IoT Device (Public — ESP32/Python tidak pakai token) ───────────────
 // Endpoint untuk menerima data dari Python/ESP32
 Route::post('/device/data', [SensorController::class, 'store']);
+
+// Endpoint untuk simulator/ESP32 mengambil dan acknowledge perintah kontrol
+Route::get('/device/control/pending', [DashboardController::class, 'pendingControl']);
+Route::post('/device/control/ack', [DashboardController::class, 'ackControl']);
+
+// Settings GET juga public agar simulator bisa fetch threshold
+Route::get('/settings', [DashboardController::class, 'getSettings']);

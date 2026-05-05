@@ -150,7 +150,7 @@ export default function Login({ onLoginSuccess, initialError = '' }) {
     <div className="login-page">
       {/* Watermark */}
       <div className="login-watermark" aria-hidden="true">
-        FACILITIES<br />MANAGEMENT
+        MANAJEMEN<br />FASILITAS
       </div>
 
       {/* Card */}
@@ -189,7 +189,7 @@ export default function Login({ onLoginSuccess, initialError = '' }) {
           {/* Email */}
           <div className="form-group">
             <label htmlFor="admin-email" className="form-label">
-              Admin Username
+              Email
             </label>
             <div className="input-wrap">
               <span className="input-icon">
@@ -220,7 +220,7 @@ export default function Login({ onLoginSuccess, initialError = '' }) {
           {/* Password */}
           <div className="form-group">
             <label htmlFor="admin-password" className="form-label">
-              Secure Password
+              Kata Sandi
             </label>
             <div className="input-wrap">
               <span className="input-icon">

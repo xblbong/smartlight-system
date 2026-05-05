@@ -22,9 +22,7 @@ function Sidebar({ user, onLogout }) {
     { path: '/analytics', label: 'Analytics', icon: BarChart3, roles: ['admin_sarpras', 'pimpinan'] },
   ]
 
-  const navItems = allNavItems.filter(item =>
-    item.roles.includes(role) || item.roles.includes('admin_sarpras')
-  )
+  const navItems = allNavItems.filter(item => item.roles.includes(role))
 
   return (
     <aside className="sidebar">
@@ -78,7 +76,7 @@ function MainLayout({ user, onLogout, children }) {
       <main className="main-content">
         <div className="topbar">
           <span className="status-badge online">
-            <Wifi size={12} /> System Online
+            <Wifi size={12} /> Sistem Aktif
           </span>
         </div>
         {children}
