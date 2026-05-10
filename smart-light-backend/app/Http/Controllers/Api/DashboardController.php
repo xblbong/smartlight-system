@@ -56,6 +56,57 @@ class DashboardController extends Controller
     }
 
     /**
+     * GET /api/device/zones
+     * Mengembalikan daftar zona yang dikenal sistem (dari data yang pernah masuk dari ESP32).
+     * zone_name: nama lokasi fisik dari konfigurasi ESP32 (via tabel zones).
+     * lamp_count: jumlah lampu per zona (default 2, bisa dikustomisasi via SystemSetting).
+     */
+    public function zones()
+    {
+        // Ambil semua zona dari tabel zones (diisi saat ESP32 POST /api/device/data)
+        $zones = DB::table('zones as z')
+            ->leftJoin('device_status_cache as dsc', function ($join) {
+                $join->on('z.device_id', '=', 'dsc.device_id')
+                     ->on('z.zone_code', '=', 'dsc.zone');
+            })
+            ->select(
+                'z.device_id',
+                'z.zone_code',
+                'z.zone_name',
+                'dsc.last_power',
+                'dsc.last_lux',
+                'dsc.last_kondisi',
+                'dsc.last_voltage',
+                'dsc.last_current',
+                'dsc.is_faulty',
+                'dsc.updated_at'
+            )
+            ->orderBy('z.device_id')
+            ->orderBy('z.zone_code')
+            ->get();
+
+        // Ambil lamp_count default dari SystemSetting (fallback: 2)
+        $defaultLampCount = (int) (SystemSetting::where('key', 'lamps_per_zone')->value('value') ?? 2);
+
+        $result = $zones->map(function ($z) use ($defaultLampCount) {
+            return [
+                'device_id'    => $z->device_id,
+                'zone_code'    => $z->zone_code,
+                'zone_name'    => $z->zone_name ?? ('Zone ' . $z->zone_code),
+                'lamp_count'   => $defaultLampCount,
+                'last_power'   => (int) ($z->last_power ?? 0),
+                'last_lux'     => round((float) ($z->last_lux ?? 0), 1),
+                'last_voltage' => round((float) ($z->last_voltage ?? 0), 2),
+                'last_current' => round((float) ($z->last_current ?? 0), 1),
+                'is_active'    => $z->updated_at !== null,
+                'is_faulty'    => (bool) ($z->is_faulty ?? false),
+            ];
+        });
+
+        return response()->json($result);
+    }
+
+    /**
      * GET /api/device/history
      * Optional query params: device_id, zone, limit (default 100)
      */
@@ -181,7 +232,7 @@ class DashboardController extends Controller
         $request->validate([
             'device_id' => 'required|string',
             'zone'      => 'required|string',
-            'action'    => 'required|string|in:ON,OFF,AUTO',
+            'action'    => 'required|string|in:ON,OFF,AUTO,EMERGENCY',
         ]);
 
         $control = DeviceControl::create([

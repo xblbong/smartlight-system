@@ -9,7 +9,7 @@ export default defineConfig({
     proxy: {
       // Semua request ke /api/* akan diforward ke Laravel backend
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://192.168.100.36:8000',
         changeOrigin: true,
         secure: false,
       }

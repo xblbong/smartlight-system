@@ -151,18 +151,7 @@ function exportToPDF(data, summary, filterZone, filterDevice) {
   win.document.close()
 }
 
-// Zone name mapping (sesuai simulator)
-const ZONE_NAMES = {
-  'A': 'Bundaran UB',
-  'B': 'Gerbang Rektorat',
-  'C': 'Jalur Fak. Vokasi',
-  'D': 'Taman Graha',
-  'E': 'Parkir Utama',
-}
-
-const ZONE_LAMPS = {
-  'A': 8, 'B': 6, 'C': 4, 'D': 6, 'E': 4,
-}
+// Zone map diisi dari API /api/device/zones (sumber: konfigurasi ESP32)
 
 // ────────────────────────────────────────────────────────────────────
 export default function Analytics({ token, onUnauthorized }) {
@@ -175,6 +164,27 @@ export default function Analytics({ token, onUnauthorized }) {
   const [filterMonth, setFilterMonth] = useState('')
   const [exporting, setExporting]     = useState('')
   const [error, setError]             = useState('')
+  // zoneMap: { [zone_code]: { zone_name, lamp_count } } — dari API /api/device/zones
+  const [zoneMap, setZoneMap]         = useState({})
+
+  // Fetch zone config dari ESP (sekali saat mount, refresh saat token berubah)
+  useEffect(() => {
+    if (!token) return
+    apiFetch('/api/device/zones', { token })
+      .then(data => {
+        if (Array.isArray(data)) {
+          const map = {}
+          data.forEach(z => {
+            map[z.zone_code] = {
+              zone_name:  z.zone_name  || `Zone ${z.zone_code}`,
+              lamp_count: z.lamp_count || 2,
+            }
+          })
+          setZoneMap(map)
+        }
+      })
+      .catch(err => console.warn('Gagal fetch zone config:', err))
+  }, [token])
 
   const fetchData = useCallback(async () => {
     try {
@@ -211,6 +221,10 @@ export default function Analytics({ token, onUnauthorized }) {
   }, [token, filterZone, filterDevice, filterMonth, onUnauthorized])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // Helper: ambil nama zona dari zoneMap, fallback ke "Zone {code}"
+  const getZoneName  = (code) => zoneMap[code]?.zone_name  || `Zone ${code}`
+  const getZoneLamps = (code) => zoneMap[code]?.lamp_count || 2
 
   // Chart data (50 terbaru, urutan lama → baru)
   const chartData = history.slice(0, 50).reverse().map(log => ({
@@ -313,7 +327,7 @@ export default function Analytics({ token, onUnauthorized }) {
           onChange={e => setFilterZone(e.target.value)}
         >
           <option value="">Semua Zona</option>
-          {zones.map(z => <option key={z} value={z}>Zone {z} — {ZONE_NAMES[z] || z}</option>)}
+          {zones.map(z => <option key={z} value={z}>Zone {z} — {getZoneName(z)}</option>)}
         </select>
         <select
           className="form-input"
@@ -541,11 +555,11 @@ export default function Analytics({ token, onUnauthorized }) {
                     <td style={{ padding: '9px 14px', fontWeight: '600' }}>{row.device_id}</td>
                     <td style={{ padding: '9px 14px' }}>
                       <span style={{ background: '#eff6ff', color: 'var(--accent-blue)', padding: '2px 8px', borderRadius: '10px', fontWeight: '700', fontSize: '10px' }}>
-                        {ZONE_NAMES[row.zone] || `Zone ${row.zone}`}
+                        {getZoneName(row.zone)}
                       </span>
                     </td>
                     <td style={{ padding: '9px 14px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      {ZONE_LAMPS[row.zone] || 2} unit
+                      {getZoneLamps(row.zone)} unit
                     </td>
                     <td style={{ padding: '9px 14px' }}>{parseFloat(row.lux || 0).toFixed(1)}</td>
                     <td style={{ padding: '9px 14px' }}>{parseFloat(row.jarak || 0).toFixed(1)} cm</td>

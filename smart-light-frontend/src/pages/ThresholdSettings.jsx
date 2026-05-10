@@ -14,8 +14,8 @@ function InlineAlert({ type, message }) {
 }
 
 export default function ThresholdSettings({ token, onUnauthorized }) {
-  const [settings, setSettings] = useState({ ldr_sensitivity: 20, pir_delay: 15 })
-  const [rawInput, setRawInput] = useState('20')
+  const [settings, setSettings] = useState({ lux_threshold: 100, pir_delay: 15 })
+  const [rawInput, setRawInput] = useState('100')
   const [inputError, setInputError] = useState('')
   const [saving, setSaving] = useState(false)
   const [alertMsg, setAlertMsg] = useState('')
@@ -28,9 +28,9 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
       .then(data => {
         if (!active) return
 
-        if (data.ldr_sensitivity && !isNaN(parseInt(data.ldr_sensitivity))) {
-          const v = parseInt(data.ldr_sensitivity)
-          setSettings(prev => ({ ...prev, ldr_sensitivity: v }))
+        if (data.lux_threshold && !isNaN(parseInt(data.lux_threshold))) {
+          const v = parseInt(data.lux_threshold)
+          setSettings(prev => ({ ...prev, lux_threshold: v }))
           setRawInput(String(v))
         }
 
@@ -65,14 +65,14 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
       setInputError('Nilai harus antara 0 dan 500 lux')
     } else {
       setInputError('')
-      setSettings(s => ({ ...s, ldr_sensitivity: n }))
+      setSettings(s => ({ ...s, lux_threshold: n }))
     }
   }
 
   // Sync slider → input
   const handleSliderChange = (val) => {
     const n = parseInt(val)
-    setSettings(s => ({ ...s, ldr_sensitivity: n }))
+    setSettings(s => ({ ...s, lux_threshold: n }))
     setRawInput(String(n))
     setInputError('')
   }
@@ -84,7 +84,10 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
       await apiFetch('/api/settings', {
         method: 'POST',
         token,
-        body: settings,
+        body: {
+          lux_threshold: settings.lux_threshold.toString(),
+          pir_delay: settings.pir_delay.toString(),
+        },
       })
       setAlertMsg('Konfigurasi berhasil disimpan!')
       setAlertType('success')
@@ -103,13 +106,13 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
   }
 
   const handleReset = () => {
-    setSettings({ ldr_sensitivity: 20, pir_delay: 15 })
-    setRawInput('20')
+    setSettings({ lux_threshold: 100, pir_delay: 15 })
+    setRawInput('100')
     setInputError('')
   }
 
   // Efficiency estimate based on threshold (outdoor: 20-500 lux range)
-  const effPct = Math.round(60 + (settings.ldr_sensitivity / 500) * 30)
+  const effPct = Math.round(60 + (settings.lux_threshold / 500) * 30)
 
   return (
     <div>
@@ -119,8 +122,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
           <h4>PENGATURAN SISTEM</h4>
           <h1>Konfigurasi Thresholds</h1>
           <p style={{ maxWidth: '600px', color: 'var(--text-secondary)', lineHeight: '1.6', marginTop: '8px' }}>
-            Atur parameter sensor untuk sistem pencahayaan kampus.
-            Sesuaikan tingkat sensitivitas deteksi cahaya dan timer kehadiran objek.
+            Atur parameter sensor untuk sistem pencahayaan kampus. Sesuaikan tingkat sensitivitas deteksi cahaya dan timer kehadiran objek.
           </p>
         </div>
       </div>
@@ -146,7 +148,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '14px' }}>
               <span style={{ fontSize: '14px', fontWeight: '600' }}>Batas Cahaya Lingkungan</span>
               <span style={{ fontSize: '26px', fontWeight: '800', color: 'var(--accent-blue)' }}>
-                {settings.ldr_sensitivity}{' '}
+                {settings.lux_threshold}{' '}
                 <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)' }}>lux</span>
               </span>
             </div>
@@ -155,7 +157,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
               className="range-slider"
               min="0"
               max="500"
-              value={settings.ldr_sensitivity}
+              value={settings.lux_threshold}
               onChange={e => handleSliderChange(e.target.value)}
             />
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>
@@ -200,7 +202,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
           <div style={{ marginTop: '32px', padding: '16px', background: 'rgba(255,255,255,0.08)', borderRadius: '10px' }}>
             <div style={{ fontSize: '11px', color: '#93c5fd', marginBottom: '8px' }}>PRATINJAU AMBANG BATAS</div>
             <div style={{ fontSize: '13px', color: 'white' }}>
-              Lampu diprioritaskan menyala jika mendeteksi objek <strong>(jarak &lt; 5 cm)</strong> dan intensitas lingkungan <strong>&lt; {settings.ldr_sensitivity} lux</strong>
+              Lampu diprioritaskan menyala jika mendeteksi objek <strong>(jarak &lt; 15 cm)</strong> dan intensitas lingkungan <strong>&lt; {settings.lux_threshold} lux</strong>
             </div>
           </div>
         </div>
@@ -234,7 +236,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
             <button
               className="btn btn-outline"
               style={{ border: 'none', padding: '8px 18px', fontSize: '20px', lineHeight: 1 }}
-              onClick={() => setSettings(s => ({ ...s, pir_delay: Math.min(5, s.pir_delay + 1) }))}
+              onClick={() => setSettings(s => ({ ...s, pir_delay: Math.min(60, s.pir_delay + 1) }))}
             >+</button>
           </div>
 
@@ -262,11 +264,11 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
             <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--accent-blue)', marginBottom: '12px', letterSpacing: '0.5px' }}>ALUR KEPUTUSAN LAMPU</div>
             <div style={{ fontSize: '13px', lineHeight: '2.2', fontFamily: 'monospace' }}>
               <div><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--accent-blue)', color: 'white', fontSize: '10px', fontWeight: '700', marginRight: '6px' }}>1</span> Baca sensor LDR &rarr; <strong>Nilai Lux</strong></div>
-              <div><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--accent-blue)', color: 'white', fontSize: '10px', fontWeight: '700', marginRight: '6px' }}>2</span> <strong>Jika Lux &lt; {settings.ldr_sensitivity}</strong> &rarr; Lingkungan GELAP</div>
+              <div><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--accent-blue)', color: 'white', fontSize: '10px', fontWeight: '700', marginRight: '6px' }}>2</span> <strong>Jika Lux &lt; {settings.lux_threshold}</strong> &rarr; Lingkungan GELAP</div>
               <div style={{ paddingLeft: '20px' }}>&rarr; Baca sensor Ultrasonik &rarr; <strong>Jarak (cm)</strong></div>
-              <div style={{ paddingLeft: '20px' }}>&rarr; <strong>Jika jarak &lt; 30 cm</strong> &rarr; Ada orang &rarr; PWM = <span style={{ color: '#16a34a', fontWeight: '700' }}>255 (100%)</span></div>
-              <div style={{ paddingLeft: '20px' }}>&rarr; <strong>Jika jarak &ge; 30 cm</strong> &rarr; Tidak ada orang &rarr; PWM = <span style={{ color: '#d97706', fontWeight: '700' }}>100 (40%)</span></div>
-              <div><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--accent-blue)', color: 'white', fontSize: '10px', fontWeight: '700', marginRight: '6px' }}>3</span> <strong>Jika Lux &ge; {settings.ldr_sensitivity}</strong> &rarr; Lingkungan TERANG</div>
+              <div style={{ paddingLeft: '20px' }}>&rarr; <strong>Jika jarak &lt; 15 cm</strong> &rarr; Ada orang &rarr; PWM = <span style={{ color: '#16a34a', fontWeight: '700' }}>255 (100%)</span></div>
+              <div style={{ paddingLeft: '20px' }}>&rarr; <strong>Jika jarak ≥ 15 cm</strong> &rarr; Tidak ada orang &rarr; PWM = <span style={{ color: '#d97706', fontWeight: '700' }}>102 (40%)</span></div>
+              <div><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--accent-blue)', color: 'white', fontSize: '10px', fontWeight: '700', marginRight: '6px' }}>3</span> <strong>Jika Lux ≥ {settings.lux_threshold}</strong> &rarr; Lingkungan TERANG</div>
               <div style={{ paddingLeft: '20px' }}>&rarr; PWM = <span style={{ color: '#dc2626', fontWeight: '700' }}>0 (Mati)</span> &mdash; Hemat energi</div>
             </div>
           </div>
@@ -275,12 +277,12 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
             <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--accent-green)', marginBottom: '12px', letterSpacing: '0.5px' }}>PARAMETER YANG DIGUNAKAN</div>
             <div style={{ fontSize: '13px', lineHeight: '2', display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
-                <span>Batas Cahaya (LDR Threshold)</span>
-                <strong style={{ color: 'var(--accent-blue)' }}>{settings.ldr_sensitivity} lux</strong>
+                <span>Batas Cahaya (Lux Threshold)</span>
+                <strong style={{ color: 'var(--accent-blue)' }}>{settings.lux_threshold} lux</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
                 <span>Jarak Deteksi Ultrasonik</span>
-                <strong>{'< 30 cm'}</strong>
+                <strong>{'< 15 cm'}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
                 <span>Delay Setelah Objek Pergi</span>
@@ -292,7 +294,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
                 <span>PWM Redup (tidak ada orang)</span>
-                <strong>100 / 255 (≈40%)</strong>
+                <strong>102 / 255 (≈40%)</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
                 <span>PWM Mati (siang / terang)</span>
@@ -306,12 +308,12 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
         <div style={{ padding: '20px', background: '#1e3a8a', borderRadius: '12px', color: 'white', marginBottom: '20px' }}>
           <div style={{ fontSize: '11px', fontWeight: '700', color: '#93c5fd', marginBottom: '12px', letterSpacing: '0.5px' }}>RUMUS PENENTUAN KONDISI LAMPU</div>
           <div style={{ fontFamily: 'monospace', fontSize: '14px', lineHeight: '2.2' }}>
-            <div><strong style={{ color: '#86efac' }}>NYALA_PENUH</strong> = (LDR_Lux &lt; <span style={{ color: '#fbbf24' }}>{settings.ldr_sensitivity}</span>) ∧ (Jarak_Ultrasonik &lt; <span style={{ color: '#fbbf24' }}>30 cm</span>)</div>
-            <div><strong style={{ color: '#fbbf24' }}>REDUP_40%</strong>&nbsp;&nbsp;&nbsp; = (LDR_Lux &lt; <span style={{ color: '#fbbf24' }}>{settings.ldr_sensitivity}</span>) ∧ (Jarak_Ultrasonik ≥ <span style={{ color: '#fbbf24' }}>30 cm</span>)</div>
-            <div><strong style={{ color: '#f87171' }}>MATI</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = (LDR_Lux ≥ <span style={{ color: '#fbbf24' }}>{settings.ldr_sensitivity}</span>)</div>
+            <div><strong style={{ color: '#86efac' }}>NYALA_PENUH</strong> = (LDR_Lux &lt; <span style={{ color: '#fbbf24' }}>{settings.lux_threshold}</span>) ∧ (Jarak_Ultrasonik &lt; <span style={{ color: '#fbbf24' }}>15 cm</span>)</div>
+            <div><strong style={{ color: '#fbbf24' }}>REDUP_40%</strong>&nbsp;&nbsp;&nbsp; = (LDR_Lux &lt; <span style={{ color: '#fbbf24' }}>{settings.lux_threshold}</span>) ∧ (Jarak_Ultrasonik ≥ <span style={{ color: '#fbbf24' }}>15 cm</span>)</div>
+            <div><strong style={{ color: '#f87171' }}>MATI</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = (LDR_Lux ≥ <span style={{ color: '#fbbf24' }}>{settings.lux_threshold}</span>)</div>
           </div>
           <div style={{ marginTop: '12px', fontSize: '12px', color: '#bfdbfe' }}>
-            Dimana: LDR_Lux = pembacaan sensor cahaya (0–1024 lux), Jarak = sensor ultrasonik HC-SR04 (cm)
+            Dimana: LDR_Lux = pembacaan sensor cahaya (0–500 lux), Jarak = sensor ultrasonik HC-SR04 (cm)
           </div>
         </div>
 
@@ -319,7 +321,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
         <div style={{ padding: '16px 20px', background: '#eff6ff', borderRadius: '10px', fontSize: '13px', lineHeight: '1.8', color: '#1e40af' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Link2 size={16} /> <strong>Koneksi ke Modul Lain:</strong></span>
           <ul style={{ margin: '8px 0 0', paddingLeft: '20px' }}>
-            <li><strong>Dashboard:</strong> Menampilkan LDR Threshold aktif dan status setiap zona (nyala/redup/mati) berdasarkan parameter ini</li>
+            <li><strong>Dashboard:</strong> Menampilkan Lux Threshold aktif dan status setiap zona (nyala/redup/mati) berdasarkan parameter ini</li>
             <li><strong>Control Center:</strong> Override manual bisa memaksa lampu ON/OFF melewati threshold ini</li>
             <li><strong>Analytics:</strong> Data log sensor mencatat setiap pembacaan lux vs threshold untuk audit efisiensi</li>
             <li><strong>Simulator (ESP32):</strong> Mengambil nilai threshold ini setiap 30 detik via API <code>/api/settings</code></li>

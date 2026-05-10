@@ -27,6 +27,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // New Dashboard routes
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
     Route::get('/device/history', [DashboardController::class, 'history']);
+    Route::get('/device/zones', [DashboardController::class, 'zones']);
     Route::post('/device/control', [DashboardController::class, 'control']);
     
     // Settings
