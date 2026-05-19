@@ -7,12 +7,13 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     public function up(): void
-    {
+{
+    if (!Schema::hasColumn('users', 'role')) {
         Schema::table('users', function (Blueprint $table) {
             $table->string('role')->default('admin_sarpras')->after('email');
-            // Nilai yang diizinkan: admin_sarpras, teknisi, pimpinan
         });
     }
+}
 
     public function down(): void
     {
