@@ -496,8 +496,13 @@ export default function Analytics({ token, onUnauthorized }) {
                 <div style={{ marginBottom: '8px', fontWeight: '700', color: '#94a3b8', fontSize: '10px', letterSpacing: '0.5px' }}>DETAIL PERHITUNGAN</div>
                 <div>Konvensional: <strong style={{ color: '#f87171' }}>{efficiency.conventional.hours_per_day} jam/hari</strong> — {efficiency.conventional.description}</div>
                 <div>Smart: <strong style={{ color: '#34d399' }}>PWM rata-rata {efficiency.smart.avg_pwm}/255 ({efficiency.smart.avg_duty_pct}%)</strong></div>
-                <div>Zona: <strong style={{ color: 'white' }}>{efficiency.total_zones}</strong> × {efficiency.lamps_per_zone} lampu × {efficiency.watts_per_lamp}W</div>
+                <div>Zona: <strong style={{ color: 'white' }}>{efficiency.total_zones}</strong> × {efficiency.lamps_per_zone} lampu × {efficiency.watts_per_lamp}W {efficiency.is_prototype && <span style={{ color: '#fbbf24' }}>(Prototype)</span>}</div>
                 <div>Data points: <strong style={{ color: 'white' }}>{efficiency.data_points}</strong></div>
+                {efficiency.is_prototype && (
+                  <div style={{ marginTop: '8px', padding: '8px', background: 'rgba(251,191,36,0.1)', borderRadius: '6px', fontSize: '10px', color: '#fbbf24' }}>
+                    ⚠️ Prototype menggunakan LED 1W. Implementasi real menggunakan lampu jalan 100W.
+                  </div>
+                )}
               </div>
 
               <div style={{ marginTop: '12px', padding: '10px', background: 'rgba(52,211,153,0.1)', borderRadius: '8px', fontSize: '11px', color: '#34d399', textAlign: 'center' }}>

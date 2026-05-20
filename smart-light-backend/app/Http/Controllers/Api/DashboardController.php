@@ -141,6 +141,7 @@ class DashboardController extends Controller
     /**
      * GET /api/analytics/efficiency
      * Menghitung perbandingan efisiensi: sistem konvensional (timer) vs smart lighting.
+     * PROTOTYPE: 1 watt per lampu LED
      * Baseline konvensional berdasarkan wawancara satpam UB:
      *   - 17:00-23:00 (6 jam): SEMUA lampu nyala 100%
      *   - 23:00-04:00 (5 jam): ~40% lampu nyala 100%
@@ -153,8 +154,8 @@ class DashboardController extends Controller
         $totalZones = $cache->count();
         if ($totalZones === 0) $totalZones = 1;
 
-        // Asumsi daya per lampu: 100W (lampu jalan konvensional)
-        $wattsPerLamp = 100;
+        // PROTOTYPE: 1 watt per lampu LED
+        $wattsPerLamp = 1;
         $lampsPerZone = 2;  // 2 lampu per zona
 
         // ── Baseline Konvensional (per hari) ──
@@ -165,8 +166,8 @@ class DashboardController extends Controller
         $convPartialRatio   = 0.4; // 40% zona tetap nyala malam
         $convDailyWh = ($totalZones * $convHoursFullAll * $wattsPerLamp * $lampsPerZone)
                      + ($totalZones * $convPartialRatio * $convHoursPartial * $wattsPerLamp * $lampsPerZone);
-        $convDailyKwh = round($convDailyWh / 1000, 2);
-        $convMonthlyKwh = round($convDailyKwh * 30, 2);
+        $convDailyKwh = round($convDailyWh / 1000, 3);  // 3 desimal untuk prototype
+        $convMonthlyKwh = round($convDailyKwh * 30, 3);
 
         // ── Smart System (dari data aktual) ──
         // Hitung dari data sensor: rata-rata duty cycle × jam operasi realistis
@@ -195,16 +196,16 @@ class DashboardController extends Controller
             $avgDuty = $avgPwm / 255;
             // Smart system: duty cycle × jam operasi malam
             // Lebih akurat karena smart lighting hanya aktif saat gelap
-            $smartHoursPerDay = round($avgDuty * $smartOperatingHours, 2);
+            $smartHoursPerDay = round($avgDuty * $smartOperatingHours, 3);
             $smartDailyWh = $totalZones * $smartHoursPerDay * $wattsPerLamp * $lampsPerZone;
-            $smartDailyKwh = round($smartDailyWh / 1000, 2);
+            $smartDailyKwh = round($smartDailyWh / 1000, 3);  // 3 desimal untuk prototype
         } else {
             $smartHoursPerDay = 0;
             $smartDailyKwh = 0;
             $avgPwm = 0;
         }
 
-        $smartMonthlyKwh = round($smartDailyKwh * 30, 2);
+        $smartMonthlyKwh = round($smartDailyKwh * 30, 3);
         // Clamp: minimal 0% (data simulator mungkin tidak sempurna)
         $savingPct = $convMonthlyKwh > 0
             ? max(0, round((($convMonthlyKwh - $smartMonthlyKwh) / $convMonthlyKwh) * 100, 1))
@@ -214,6 +215,7 @@ class DashboardController extends Controller
             'total_zones'       => $totalZones,
             'lamps_per_zone'    => $lampsPerZone,
             'watts_per_lamp'    => $wattsPerLamp,
+            'is_prototype'      => true,  // Flag untuk frontend
             'conventional'      => [
                 'daily_kwh'     => $convDailyKwh,
                 'monthly_kwh'   => $convMonthlyKwh,
