@@ -76,7 +76,7 @@ function exportToPDF(data, summary, filterZone, filterDevice) {
   const rows    = data.slice(0, 200)
 
   const tableRows = rows.map((row, i) => {
-    const isFaulty = parseFloat(row.current) < 10 && parseInt(row.powerLampu) > 0
+    const isFaulty = row.kondisi?.toUpperCase().includes('RUSAK')
     const bg = isFaulty ? '#FFF5F5' : i % 2 === 0 ? '#fff' : '#f8fafc'
     const kondisiColor = row.kondisi?.includes('RUSAK') ? '#dc2626'
       : row.kondisi?.includes('NORMAL') ? '#16a34a' : '#374151'
@@ -356,7 +356,7 @@ export default function Analytics({ token, onUnauthorized }) {
           { label: 'Total Log',       val: history.length,                        color: '#eff6ff', icon: <FileText size={18} /> },
           { label: 'Avg Lux',         val: history.length ? `${(history.reduce((a, b) => a + parseFloat(b.lux || 0), 0) / history.length).toFixed(1)} lx` : '—', color: '#f0fdf4', icon: <Wifi size={18} /> },
           { label: 'Lampu Menyala',   val: summary?.lampu_menyala ?? '—',         color: '#fffbeb', icon: <Clock size={18} /> },
-          { label: 'Perangkat Rusak',  val: history.filter(h => parseFloat(h.current) < 10 && parseInt(h.powerLampu) > 0).length, color: '#fef2f2', icon: <AlertTriangle size={18} /> },
+          { label: 'Perangkat Rusak',  val: history.filter(h => h.kondisi?.toUpperCase().includes('RUSAK')).length, color: '#fef2f2', icon: <AlertTriangle size={18} /> },
         ].map(({ label, val, color, icon }) => (
           <div key={label} className="card" style={{ display: 'flex', gap: '14px', alignItems: 'center', padding: '18px' }}>
             <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -547,7 +547,7 @@ export default function Analytics({ token, onUnauthorized }) {
               ) : history.length === 0 ? (
                 <tr><td colSpan="12" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>Belum ada data log. Jalankan simulator IoT.</td></tr>
               ) : history.slice(0, 100).map((row, i) => {
-                const isFaulty = parseFloat(row.current) < 10 && parseInt(row.powerLampu) > 0
+                const isFaulty = row.kondisi?.toUpperCase().includes('RUSAK')
                 return (
                   <tr key={i} style={{ borderBottom: '1px solid var(--border-color)', background: isFaulty ? '#fff5f5' : i % 2 === 0 ? 'white' : '#fafafa' }}>
                     <td style={{ padding: '9px 14px', color: 'var(--text-muted)', fontSize: '11px' }}>{i + 1}</td>

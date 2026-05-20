@@ -86,12 +86,10 @@ class SensorController extends Controller
             'timestamp' => $timestamp,
         ]);
 
-        // 4. Fault detection - aktif karena INA219 sudah terpasang
-        // Lampu ON (PWM > 50) tapi arus sangat rendah (<10mA) = lampu rusak/putus
+        // 4. Fault detection - Mengikuti status 'RUSAK' dari ESP32 (yang memiliki buffer penundaan/failCount)
         $is_faulty = (
-            ($validated['powerLampu'] ?? 0) > 50 &&
-            ($validated['current'] ?? null) !== null &&
-            ($validated['current'] ?? 0) < 10.0
+            isset($validated['kondisi']) && 
+            str_contains(strtoupper($validated['kondisi']), 'RUSAK')
         );
         $now = now();
 

@@ -98,6 +98,9 @@ void setup() {
     Serial.print("."); 
   }
   Serial.println("\n[OK] WiFi Connected!");
+
+  // Ambil settings dari server segera setelah terhubung WiFi
+  fetchSettings();
 }
 
 float bacaJarak() {
@@ -119,18 +122,31 @@ void setLampuZone(int idx, int level) {
 }
 
 void fetchSettings() {
+  Serial.println("\n--- MENGAMBIL SETTING DARI SERVER ---");
+  Serial.printf("URL: %s\n", apiSettingsUrl);
+  
   HTTPClient http;
   http.begin(apiSettingsUrl);
   http.setTimeout(3000);
   
   int code = http.GET();
+  Serial.printf("[SETTINGS] HTTP Code: %d\n", code);
   
   if (code == 200) {
     String response = http.getString();
+    Serial.println("[SETTINGS] Response Payload: " + response);
+    
     DynamicJsonDocument doc(1024);
     DeserializationError err = deserializeJson(doc, response);
     
-    if (!err && doc.is<JsonObject>()) {
+    if (err) {
+      Serial.print(F("[SETTINGS] JSON Deserialization failed: "));
+      Serial.println(err.f_str());
+      http.end();
+      return;
+    }
+    
+    if (doc.is<JsonObject>()) {
       JsonObject obj = doc.as<JsonObject>();
       
       // Update threshold dari server
@@ -139,6 +155,8 @@ void fetchSettings() {
         if (newThreshold != luxThreshold) {
           Serial.printf("[SETTINGS] Lux Threshold updated: %.1f → %.1f\n", luxThreshold, newThreshold);
           luxThreshold = newThreshold;
+        } else {
+          Serial.printf("[SETTINGS] Lux Threshold tetap: %.1f (Tidak ada perubahan)\n", luxThreshold);
         }
       }
       
@@ -148,18 +166,23 @@ void fetchSettings() {
         if (newDelay != delayUltrasonik) {
           Serial.printf("[SETTINGS] Delay Ultrasonik updated: %d → %d detik\n", delayUltrasonik, newDelay);
           delayUltrasonik = newDelay;
+        } else {
+          Serial.printf("[SETTINGS] Delay Ultrasonik tetap: %d detik (Tidak ada perubahan)\n", delayUltrasonik);
         }
       }
     }
+  } else {
+    Serial.println("[SETTINGS] ERROR - Gagal mengambil setting dari server!");
   }
   http.end();
+  Serial.println("-------------------------------------\n");
 }
 
 void loop() {
   if (WiFi.status() != WL_CONNECTED) return;
   
-  // 0. FETCH SETTINGS (Tiap 30 detik)
-  if (millis() - lastSettingsFetch > 30000) {
+  // 0. FETCH SETTINGS (Tiap 2 detik agar responsif)
+  if (millis() - lastSettingsFetch > 2000) {
     lastSettingsFetch = millis();
     fetchSettings();
   }
@@ -239,8 +262,8 @@ void loop() {
     }
   }
   
-  // 3. AMBIL PERINTAH KONTROL DARI WEBSITE (Tiap 2 detik)
-  if (millis() - lastControl > 2000) {
+  // 3. AMBIL PERINTAH KONTROL DARI WEBSITE (Tiap 0,5 detik)
+  if (millis() - lastControl > 500) {
     lastControl = millis();
     HTTPClient http;
     http.begin(apiControlUrl);
@@ -294,62 +317,64 @@ void loop() {
     http.end();
   }
   
-  // 4. KIRIM DATA KE WEBSITE (Tiap 3 detik)
-  if (millis() - lastSend > 3000) {
+  // 4. KIRIM DATA KE WEBSITE (Tiap 1 detik bergantian antar zona untuk mencegah blocking HTTPS)
+  static int currentZoneToSend = 0;
+  if (millis() - lastSend > 1000) {
     lastSend = millis();
     
-    for (int i = 0; i < 4; i++) {
-      DynamicJsonDocument doc(512);
-      
-      doc["device_id"] = deviceId;
-      doc["zone"] = lampu[i].zone;
-      doc["lux"] = currentLux;
-      doc["jarak"] = currentJarak;
-      doc["voltage"] = currentV;
-      doc["current"] = (lampu[i].isON) ? (currentmA / 4.0) : 0; 
-      bool zoneMasaTunggu = false;
-      if (currentLux < luxThreshold) {
-        unsigned long timeSinceLastGerakan = (millis() - lastGerakanTime[i]) / 1000;
-        zoneMasaTunggu = (timeSinceLastGerakan < delayUltrasonik) && !adaOrang;
-      }
-
-      doc["sedangAdaOrang"] = adaOrang;
-      doc["masihMasaTunggu"] = zoneMasaTunggu;
-      doc["tombol"] = tombolDitekan;
-      
-      if (lampu[i].pwmLevel > 0 && currentmA < 5.0 && inaReady) {
-         // Lampu seharusnya nyala (PWM > 0) tapi arus mendekati 0
-         lampu[i].failCount++;
-         if (lampu[i].failCount >= 10) { // Harus 0 mA berturut-turut (~30 detik) baru dianggap rusak
-            doc["kondisi"] = "RUSAK";
-            doc["trigger"] = "ERROR - ARUS 0";
-         } else {
-            doc["kondisi"] = lampu[i].kondisi;
-            doc["trigger"] = lampu[i].trigger;
-         }
-      } else {
-         lampu[i].failCount = 0; // Reset counter
-         doc["kondisi"] = lampu[i].kondisi;
-         doc["trigger"] = lampu[i].trigger;
-      }
-      
-      doc["powerLampu"] = lampu[i].isON ? lampu[i].pwmLevel : 0;
-      
-      String payload;
-      serializeJson(doc, payload);
-      
-      Serial.println("\n--- MENGIRIM DATA KE SERVER ---");
-      Serial.println("Payload: " + payload);
-      
-      HTTPClient http;
-      http.begin(apiDataUrl);
-      http.addHeader("Content-Type", "application/json");
-      int res = http.POST(payload);
-      
-      Serial.printf("[Monitor] Zone %s | Sync: HTTP %d\n", lampu[i].zone.c_str(), res);
-      http.end();
-      delay(50); // Jeda sedikit antar request
+    int i = currentZoneToSend;
+    DynamicJsonDocument doc(512);
+    
+    doc["device_id"] = deviceId;
+    doc["zone"] = lampu[i].zone;
+    doc["lux"] = currentLux;
+    doc["jarak"] = currentJarak;
+    doc["voltage"] = currentV;
+    doc["current"] = (lampu[i].isON) ? (currentmA / 4.0) : 0; 
+    bool zoneMasaTunggu = false;
+    if (currentLux < luxThreshold) {
+      unsigned long timeSinceLastGerakan = (millis() - lastGerakanTime[i]) / 1000;
+      zoneMasaTunggu = (timeSinceLastGerakan < delayUltrasonik) && !adaOrang;
     }
+
+    doc["sedangAdaOrang"] = adaOrang;
+    doc["masihMasaTunggu"] = zoneMasaTunggu;
+    doc["tombol"] = tombolDitekan;
+    
+    if (lampu[i].pwmLevel > 0 && currentmA < 5.0 && inaReady) {
+       // Lampu seharusnya nyala (PWM > 0) tapi arus mendekati 0
+       lampu[i].failCount++;
+       if (lampu[i].failCount >= 30) { // Harus 0 mA berturut-turut (~2 menit) baru dianggap rusak
+          doc["kondisi"] = "RUSAK";
+          doc["trigger"] = "ERROR - ARUS 0";
+       } else {
+          doc["kondisi"] = lampu[i].kondisi;
+          doc["trigger"] = lampu[i].trigger;
+       }
+    } else {
+       lampu[i].failCount = 0; // Reset counter
+       doc["kondisi"] = lampu[i].kondisi;
+       doc["trigger"] = lampu[i].trigger;
+    }
+    
+    doc["powerLampu"] = lampu[i].isON ? lampu[i].pwmLevel : 0;
+    
+    String payload;
+    serializeJson(doc, payload);
+    
+    Serial.println("\n--- MENGIRIM DATA KE SERVER ---");
+    Serial.println("Payload: " + payload);
+    
+    HTTPClient http;
+    http.begin(apiDataUrl);
+    http.addHeader("Content-Type", "application/json");
+    int res = http.POST(payload);
+    
+    Serial.printf("[Monitor] Zone %s | Sync: HTTP %d\n", lampu[i].zone.c_str(), res);
+    http.end();
+    
+    // Pindah ke zona berikutnya untuk loop berikutnya
+    currentZoneToSend = (currentZoneToSend + 1) % 4;
   }
   
   delay(100);
