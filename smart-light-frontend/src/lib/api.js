@@ -18,6 +18,8 @@ async function parseResponse(res) {
   return text ? { message: text } : null
 }
 
+const BASE_URL = import.meta.env.VITE_API_URL ?? ''
+
 export async function apiFetch(path, { token, headers = {}, body, ...options } = {}) {
   const finalHeaders = {
     Accept: 'application/json',
@@ -43,7 +45,8 @@ export async function apiFetch(path, { token, headers = {}, body, ...options } =
     }
   }
 
-  const res = await fetch(path, requestInit)
+  const url = `${BASE_URL}${path}`
+  const res = await fetch(url, requestInit)
   const data = await parseResponse(res)
 
   if (!res.ok) {
