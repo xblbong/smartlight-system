@@ -28,13 +28,14 @@ struct Lampu {
   int pwmLevel;   // 0-255 PWM value
   String trigger;
   String kondisi;
+  int failCount;
 };
 
 Lampu lampu[4] = {
-  {"A", 17, false, false, 0, "AUTO", "MATI"},
-  {"B", 5,  false, false, 0, "AUTO", "MATI"},
-  {"C", 15, false, false, 0, "AUTO", "MATI"},
-  {"D", 7,  false, false, 0, "AUTO", "MATI"}
+  {"A", 17, false, false, 0, "AUTO", "MATI", 0},
+  {"B", 5,  false, false, 0, "AUTO", "MATI", 0},
+  {"C", 15, false, false, 0, "AUTO", "MATI", 0},
+  {"D", 7,  false, false, 0, "AUTO", "MATI", 0}
 };
 
 Adafruit_INA219 ina219;
@@ -176,7 +177,7 @@ void loop() {
     if (currentmA < 0) currentmA = 0;
   }
   
-  bool adaOrang = (currentJarak < 3 );  // Threshold jarak 5 cm
+  bool adaOrang = (currentJarak < 3 );  // Threshold jarak 3 cm
   bool tombolDitekan = (digitalRead(PIN_SWITCH) == LOW);
   
   // // Debug switch setiap 5 detik
@@ -306,20 +307,33 @@ void loop() {
       doc["jarak"] = currentJarak;
       doc["voltage"] = currentV;
       doc["current"] = (lampu[i].isON) ? (currentmA / 4.0) : 0; 
+      bool zoneMasaTunggu = false;
+      if (currentLux < luxThreshold) {
+        unsigned long timeSinceLastGerakan = (millis() - lastGerakanTime[i]) / 1000;
+        zoneMasaTunggu = (timeSinceLastGerakan < delayUltrasonik) && !adaOrang;
+      }
+
       doc["sedangAdaOrang"] = adaOrang;
-      doc["masihMasaTunggu"] = false;
+      doc["masihMasaTunggu"] = zoneMasaTunggu;
       doc["tombol"] = tombolDitekan;
       
       if (lampu[i].pwmLevel > 0 && currentmA < 5.0 && inaReady) {
-         // Lampu seharusnya nyala (PWM > 0) tapi arus 0 = RUSAK
-         doc["kondisi"] = "RUSAK";
-         doc["trigger"] = "ERROR - ARUS 0";
+         // Lampu seharusnya nyala (PWM > 0) tapi arus mendekati 0
+         lampu[i].failCount++;
+         if (lampu[i].failCount >= 10) { // Harus 0 mA berturut-turut (~30 detik) baru dianggap rusak
+            doc["kondisi"] = "RUSAK";
+            doc["trigger"] = "ERROR - ARUS 0";
+         } else {
+            doc["kondisi"] = lampu[i].kondisi;
+            doc["trigger"] = lampu[i].trigger;
+         }
       } else {
+         lampu[i].failCount = 0; // Reset counter
          doc["kondisi"] = lampu[i].kondisi;
          doc["trigger"] = lampu[i].trigger;
       }
       
-      doc["powerLampu"] = lampu[i].isON ? 255 : 0;
+      doc["powerLampu"] = lampu[i].isON ? lampu[i].pwmLevel : 0;
       
       String payload;
       serializeJson(doc, payload);

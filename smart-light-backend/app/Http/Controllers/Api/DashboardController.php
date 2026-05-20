@@ -125,7 +125,11 @@ class DashboardController extends Controller
         // Filter bulan: format YYYY-MM
         if ($request->filled('month')) {
             $month = $request->month; // e.g. "2026-05"
-            $query->whereRaw("to_char(created_at, 'YYYY-MM') = ?", [$month]);
+            $parts = explode('-', $month);
+            if (count($parts) === 2) {
+                $query->whereYear('created_at', $parts[0])
+                      ->whereMonth('created_at', $parts[1]);
+            }
         }
 
         $limit = min((int) ($request->get('limit', 100)), 1000);
@@ -174,8 +178,12 @@ class DashboardController extends Controller
 
         if ($request->filled('month')) {
             $month = $request->month;
-            $query = DB::table('sensor_logs')
-                ->whereRaw("to_char(created_at, 'YYYY-MM') = ?", [$month]);
+            $parts = explode('-', $month);
+            if (count($parts) === 2) {
+                $query = DB::table('sensor_logs')
+                    ->whereYear('created_at', $parts[0])
+                    ->whereMonth('created_at', $parts[1]);
+            }
         }
 
         $logs = $query->get();

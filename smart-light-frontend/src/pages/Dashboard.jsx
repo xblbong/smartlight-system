@@ -112,12 +112,16 @@ export default function Dashboard({ token, onUnauthorized }) {
   const onlineMati = onlineDevices.filter(
     (d) => !d.latest_data?.powerLampu || d.latest_data?.powerLampu === 0,
   ).length;
-  const healthyUnits = onlineDevices.length - faultyUnits;
+  
+  const healthyDevices = onlineDevices.filter((d) => !d.latest_data?.is_faulty);
+  const totalPowerMax = healthyDevices.length * 255;
+  const actualPower = healthyDevices.reduce((sum, d) => sum + (d.latest_data?.powerLampu || 0), 0);
+
   const eff =
-    healthyUnits > 0
+    totalPowerMax > 0
       ? Math.max(
           0,
-          Math.round(((healthyUnits - onlineMenyala) / healthyUnits) * 100),
+          Math.round(((totalPowerMax - actualPower) / totalPowerMax) * 100),
         )
       : 0;
 
@@ -252,10 +256,7 @@ export default function Dashboard({ token, onUnauthorized }) {
             const offline = isOffline(d);
             const connectivityLabel = offline ? "OFFLINE" : "ONLINE";
             const stateLabel = isOff ? "OFF" : isRedup ? "REDUP" : "TERANG";
-            const powerPct = Math.min(
-              100,
-              Math.round((d.powerLampu / 255) * 100),
-            );
+            const powerPct = isOff ? 0 : isRedup ? 40 : Math.min(100, Math.round((d.powerLampu / 255) * 100));
             const isFaulty = d.is_faulty;
 
             return (
@@ -385,7 +386,7 @@ export default function Dashboard({ token, onUnauthorized }) {
                     lampu{" "}
                     {isOff ? "mati" : isFull ? "nyala terang" : "nyala redup"}
                   </span>
-                  <span
+                  {/* <span
                     style={{
                       marginLeft: "auto",
                       fontSize: "11px",
@@ -393,7 +394,7 @@ export default function Dashboard({ token, onUnauthorized }) {
                     }}
                   >
                     @ {powerPct}% intensitas
-                  </span>
+                  </span> */}
                 </div>
 
                 {/* Presence Indicator */}

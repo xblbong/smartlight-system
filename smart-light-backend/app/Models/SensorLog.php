@@ -24,4 +24,16 @@ class SensorLog extends Model
         'powerLampu',
         'timestamp',
     ];
+
+    protected $casts = [
+        'sedangAdaOrang' => 'boolean',
+        'masihMasaTunggu' => 'boolean',
+        'tombol' => 'boolean',
+        'lux' => 'float',
+        'jarak' => 'float',
+        'voltage' => 'float',
+        'current' => 'float',
+        'powerLampu' => 'integer',
+        'timestamp' => 'datetime',
+    ];
 }
