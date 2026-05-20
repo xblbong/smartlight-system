@@ -9,9 +9,9 @@ export default defineConfig({
     proxy: {
       // Semua request ke /api/* akan diforward ke Laravel backend
       '/api': {
-        target: 'http://192.168.100.36:8000',
+        target: 'https://api.munndev.my.id',
         changeOrigin: true,
-        secure: false,
+        secure: true,
       }
     }
   }

@@ -8,10 +8,10 @@
 // ===== CONFIG =====
 const char* ssid          = "KOS MUSLIMIN 2";
 const char* password      = "12341234";
-const char* apiDataUrl    = "http://192.168.100.36:8000/api/device/data";
-const char* apiControlUrl = "http://192.168.100.36:8000/api/device/control/pending?device_id=ESP32-001";
-const char* apiAckUrl     = "http://192.168.100.36:8000/api/device/control/ack";
-const char* apiSettingsUrl = "http://192.168.100.36:8000/api/settings";
+const char* apiDataUrl    = "https://api.munndev.my.id/api/device/data";
+const char* apiControlUrl = "https://api.munndev.my.id/api/device/control/pending?device_id=ESP32-001";
+const char* apiAckUrl     = "https://api.munndev.my.id/api/device/control/ack";
+const char* apiSettingsUrl = "https://api.munndev.my.id/api/settings";
 const char* deviceId      = "ESP32-001";
 
 #define PIN_TRIG 11
