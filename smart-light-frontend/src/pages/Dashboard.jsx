@@ -42,7 +42,7 @@ export default function Dashboard({ token, onUnauthorized }) {
     const controller = new AbortController();
     apiFetch("/settings", { token, signal: controller.signal })
       .then(data => {
-        if (data?.ldr_sensitivity) setThreshold(parseInt(data.ldr_sensitivity));
+        if (data?.lux_threshold) setThreshold(parseInt(data.lux_threshold));
       })
       .catch(() => {});
     return () => controller.abort();

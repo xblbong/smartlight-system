@@ -305,7 +305,7 @@ class DashboardController extends Controller
      */
     public function saveSettings(Request $request)
     {
-        $allowed = ['lux_threshold', 'pir_delay', 'lamps_per_zone', 'ldr_sensitivity'];
+        $allowed = ['lux_threshold', 'pir_delay', 'lamps_per_zone'];
 
         foreach ($request->only($allowed) as $key => $value) {
             SystemSetting::updateOrCreate(['key' => $key], ['value' => $value]);
