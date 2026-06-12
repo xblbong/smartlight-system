@@ -34,8 +34,5 @@ smart-light-frontend/dist
 
 # Docker meta
 docker-compose*.yml
-php/
-nginx/
-frontend/
 README.md
 *.md

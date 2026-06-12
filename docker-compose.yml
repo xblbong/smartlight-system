@@ -39,7 +39,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile
+      dockerfile: smart-light-frontend/Dockerfile
       args:
         VITE_API_URL: /api
     container_name: smartlight-frontend
