@@ -8,7 +8,9 @@ RUN apk add --no-cache \
 
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
-    pdo pdo_mysql mbstring zip intl bcmath opcache gd
+    pdo pdo_mysql mbstring zip intl bcmath opcache gd \
+    && pecl install redis \
+    && docker-php-ext-enable redis
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
