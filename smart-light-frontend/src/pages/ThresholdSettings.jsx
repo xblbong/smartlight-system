@@ -24,7 +24,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
   useEffect(() => {
     let active = true
 
-    apiFetch('/api/settings', { token })
+    apiFetch('/settings', { token })
       .then(data => {
         if (!active) return
 
@@ -81,7 +81,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
     if (inputError) return
     setSaving(true)
     try {
-      await apiFetch('/api/settings', {
+      await apiFetch('/settings', {
         method: 'POST',
         token,
         body: {

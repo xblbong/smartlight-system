@@ -55,7 +55,7 @@ export default function ControlCenter({ token, onUnauthorized }) {
 
   const fetchDevices = useCallback(async () => {
     try {
-      const data = await apiFetch("/api/device/latest", { token });
+      const data = await apiFetch("/device/latest", { token });
       setDevices(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("ControlCenter fetch error:", error);
@@ -87,7 +87,7 @@ export default function ControlCenter({ token, onUnauthorized }) {
     const key = `${deviceId}-${zone}`;
     setPending((prev) => ({ ...prev, [key]: action }));
     try {
-      await apiFetch("/api/device/control", {
+      await apiFetch("/device/control", {
         method: "POST",
         token,
         body: { device_id: deviceId, zone, action },

@@ -170,7 +170,7 @@ export default function Analytics({ token, onUnauthorized }) {
   // Fetch zone config dari ESP (sekali saat mount, refresh saat token berubah)
   useEffect(() => {
     if (!token) return
-    apiFetch('/api/device/zones', { token })
+    apiFetch('/device/zones', { token })
       .then(data => {
         if (Array.isArray(data)) {
           const map = {}
@@ -198,9 +198,9 @@ export default function Analytics({ token, onUnauthorized }) {
       if (filterMonth) effParams.set('month', filterMonth)
 
       const [historyData, summaryData, effData] = await Promise.all([
-        apiFetch(`/api/device/history?${params}`, { token }),
-        apiFetch('/api/dashboard/summary', { token }),
-        apiFetch(`/api/analytics/efficiency?${effParams}`, { token }),
+        apiFetch(`/device/history?${params}`, { token }),
+        apiFetch('/dashboard/summary', { token }),
+        apiFetch(`/analytics/efficiency?${effParams}`, { token }),
       ])
 
       setHistory(Array.isArray(historyData) ? historyData : [])

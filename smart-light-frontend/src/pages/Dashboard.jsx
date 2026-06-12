@@ -41,9 +41,9 @@ export default function Dashboard({ token, onUnauthorized }) {
       setError("");
 
       const [summaryData, deviceData, settingsData] = await Promise.all([
-        apiFetch("/api/dashboard/summary", { token }),
-        apiFetch("/api/device/latest", { token }),
-        apiFetch("/api/settings", { token }),
+        apiFetch("/dashboard/summary", { token }),
+        apiFetch("/device/latest", { token }),
+        apiFetch("/settings", { token }),
       ]);
 
       setSummary(summaryData);

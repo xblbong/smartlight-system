@@ -124,7 +124,7 @@ export default function App() {
     let active = true
     setAuthReady(false)
 
-    apiFetch('/api/me', { token })
+    apiFetch('/me', { token })
       .then(data => {
         if (!active) return
 
@@ -155,7 +155,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      await apiFetch('/api/logout', {
+      await apiFetch('/logout', {
         method: 'POST',
         token,
       })
