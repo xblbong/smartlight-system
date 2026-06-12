@@ -6,11 +6,13 @@ RUN apk add --no-cache \
     freetype-dev libjpeg-turbo-dev libpng-dev \
     netcat-openbsd
 
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+RUN apk add --no-cache --virtual .build-deps autoconf g++ make \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
     pdo pdo_mysql mbstring zip intl bcmath opcache gd \
     && pecl install redis \
-    && docker-php-ext-enable redis
+    && docker-php-ext-enable redis \
+    && apk del .build-deps
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
