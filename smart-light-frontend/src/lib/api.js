@@ -19,16 +19,27 @@ async function parseResponse(res) {
 }
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? ''
+const DEFAULT_TIMEOUT = 10000 // 10 detik
 
-export async function apiFetch(path, { token, headers = {}, body, ...options } = {}) {
+export async function apiFetch(path, { token, headers = {}, body, timeout = DEFAULT_TIMEOUT, signal, ...options } = {}) {
   const finalHeaders = {
     Accept: 'application/json',
     ...headers,
   }
 
+  // Buat AbortController untuk timeout
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+  // Gabungkan signal user dengan timeout signal
+  if (signal) {
+    signal.addEventListener('abort', () => controller.abort())
+  }
+
   const requestInit = {
     ...options,
     headers: finalHeaders,
+    signal: controller.signal,
   }
 
   if (token) {
@@ -45,20 +56,29 @@ export async function apiFetch(path, { token, headers = {}, body, ...options } =
     }
   }
 
-  const url = `${BASE_URL}${path}`
-  const res = await fetch(url, requestInit)
-  const data = await parseResponse(res)
+  try {
+    const url = `${BASE_URL}${path}`
+    const res = await fetch(url, requestInit)
+    const data = await parseResponse(res)
 
-  if (!res.ok) {
-    const message =
-      data?.message ||
-      data?.error ||
-      `Request gagal dengan status ${res.status}`
+    if (!res.ok) {
+      const message =
+        data?.message ||
+        data?.error ||
+        `Request gagal dengan status ${res.status}`
 
-    throw new ApiError(message, res.status, data)
+      throw new ApiError(message, res.status, data)
+    }
+
+    return data
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new ApiError('Request timeout — server tidak merespons', 408)
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
   }
-
-  return data
 }
 
 export function getErrorMessage(error, fallback = 'Terjadi kesalahan saat menghubungi server.') {

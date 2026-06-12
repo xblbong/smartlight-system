@@ -53,12 +53,12 @@ export default function ControlCenter({ token, onUnauthorized }) {
   const removeToast = (id) =>
     setToasts((prev) => prev.filter((t) => t.id !== id));
 
-  const fetchDevices = useCallback(async () => {
+  const fetchDevices = useCallback(async (signal) => {
     try {
-      const data = await apiFetch("/device/latest", { token });
+      const data = await apiFetch("/device/latest", { token, signal });
       setDevices(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error("ControlCenter fetch error:", error);
+      if (error.name === 'AbortError') return;
 
       if (error.status === 401) {
         onUnauthorized?.();
@@ -78,12 +78,16 @@ export default function ControlCenter({ token, onUnauthorized }) {
   }, [token, onUnauthorized]);
 
   useEffect(() => {
-    fetchDevices();
-    const id = setInterval(fetchDevices, 8000);
-    return () => clearInterval(id);
+    const controller = new AbortController();
+    fetchDevices(controller.signal);
+    const id = setInterval(() => fetchDevices(controller.signal), 8000);
+    return () => {
+      clearInterval(id);
+      controller.abort();
+    };
   }, [fetchDevices]);
 
-  const handleControl = async (deviceId, zone, action, silent = false) => {
+  const handleControl = async (deviceId, zone, action, silent = false, skipRefetch = false) => {
     const key = `${deviceId}-${zone}`;
     setPending((prev) => ({ ...prev, [key]: action }));
     try {
@@ -98,7 +102,10 @@ export default function ControlCenter({ token, onUnauthorized }) {
           "success",
         );
       }
-      setTimeout(fetchDevices, 1500);
+      // Hanya refetch jika bukan bagian dari master control
+      if (!skipRefetch) {
+        setTimeout(fetchDevices, 1500);
+      }
       return true;
     } catch (error) {
       if (error.status === 401) {
@@ -132,7 +139,7 @@ export default function ControlCenter({ token, onUnauthorized }) {
     if (!window.confirm(`Yakin ingin ${actionText} SEMUA zona?`)) return;
     const results = await Promise.all(
       devices.map((dev) =>
-        handleControl(dev.device_id, dev.zone, action, true),
+        handleControl(dev.device_id, dev.zone, action, true, true),
       ),
     );
     const ok = results.filter(Boolean).length;
@@ -140,6 +147,8 @@ export default function ControlCenter({ token, onUnauthorized }) {
       `Master ${action}: ${ok}/${devices.length} zona berhasil`,
       ok === devices.length ? "success" : "error",
     );
+    // Single refetch setelah semua command terkirim
+    setTimeout(fetchDevices, 1500);
   };
 
   // Deteksi offline: menggunakan flag is_online dari backend

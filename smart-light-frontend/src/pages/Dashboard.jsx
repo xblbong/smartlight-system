@@ -36,23 +36,33 @@ export default function Dashboard({ token, onUnauthorized }) {
   const [error, setError] = useState("");
   const [threshold, setThreshold] = useState(null);
 
-  const fetchData = useCallback(async () => {
+  // Fetch settings sekali saja saat mount (tidak perlu di-poll)
+  useEffect(() => {
+    if (!token) return;
+    const controller = new AbortController();
+    apiFetch("/settings", { token, signal: controller.signal })
+      .then(data => {
+        if (data?.ldr_sensitivity) setThreshold(parseInt(data.ldr_sensitivity));
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [token]);
+
+  // Polling data real-time (summary + devices)
+  const fetchData = useCallback(async (signal) => {
     try {
       setError("");
 
-      const [summaryData, deviceData, settingsData] = await Promise.all([
-        apiFetch("/dashboard/summary", { token }),
-        apiFetch("/device/latest", { token }),
-        apiFetch("/settings", { token }),
+      const [summaryData, deviceData] = await Promise.all([
+        apiFetch("/dashboard/summary", { token, signal }),
+        apiFetch("/device/latest", { token, signal }),
       ]);
 
       setSummary(summaryData);
       setDevices(Array.isArray(deviceData) ? deviceData : []);
-      if (settingsData?.ldr_sensitivity)
-        setThreshold(parseInt(settingsData.ldr_sensitivity));
       setLastUpdate(new Date());
     } catch (error) {
-      console.error("Dashboard fetch error:", error);
+      if (error.name === 'AbortError' || error.status === 408) return;
 
       if (error.status === 401) {
         onUnauthorized?.();
@@ -66,9 +76,13 @@ export default function Dashboard({ token, onUnauthorized }) {
   }, [token, onUnauthorized]);
 
   useEffect(() => {
-    fetchData();
-    const id = setInterval(fetchData, 5000);
-    return () => clearInterval(id);
+    const controller = new AbortController();
+    fetchData(controller.signal);
+    const id = setInterval(() => fetchData(controller.signal), 8000);
+    return () => {
+      clearInterval(id);
+      controller.abort();
+    };
   }, [fetchData]);
 
   if (loading && !summary) {
