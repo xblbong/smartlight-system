@@ -256,7 +256,7 @@ export default function Dashboard({ token, onUnauthorized }) {
       {/* ── Zone Cards Grid ── */}
       <div className="grid-cols-4">
         {devices.length === 0 ? (
-          <div className="card empty-state" style={{ gridColumn: "span 4" }}>
+          <div className="card empty-state" style={{ gridColumn: "1 / -1" }}>
             <Wifi size={48} color="var(--text-muted)" />
             <h3>Tidak ada device terdeteksi</h3>
             <p>Nyalakan ESP32 / Simulator untuk melihat data real-time.</p>

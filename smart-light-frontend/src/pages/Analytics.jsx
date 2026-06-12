@@ -25,7 +25,7 @@ function exportToExcel(data, filename = 'sensor_log.csv') {
   }
 
   const headers = [
-    'Waktu', 'Device ID', 'Zona', 'Lux (lx)', 'Jarak (cm)',
+    'Waktu', 'Device ID', 'Zona', 'Lux (lx)',
     'Arus (mA)', 'Voltage (V)', 'Power (PWM)', 'Kondisi', 'Trigger',
     'Ada Orang', 'Masa Tunggu', 'Tombol', 'LDR Status', 'Ultrasonic Status', 'INA219 Status'
   ]
@@ -35,7 +35,6 @@ function exportToExcel(data, filename = 'sensor_log.csv') {
     row.device_id || '',
     row.zone || '',
     parseFloat(row.lux || 0).toFixed(2),
-    parseFloat(row.jarak || 0).toFixed(2),
     parseFloat(row.current || 0).toFixed(2),
     parseFloat(row.voltage || 0).toFixed(2),
     row.powerLampu || 0,
@@ -88,7 +87,6 @@ function exportToPDF(data, summary, filterZone, filterDevice) {
         <td><strong>${row.device_id || ''}</strong></td>
         <td><span style="background:#eff6ff;color:#1d4ed8;padding:2px 6px;border-radius:4px;font-size:11px">Zone ${row.zone || ''}</span></td>
         <td>${parseFloat(row.lux || 0).toFixed(1)}</td>
-        <td>${parseFloat(row.jarak || 0).toFixed(1)}</td>
         <td style="color:${isFaulty ? '#dc2626' : 'inherit'};font-weight:${isFaulty ? '700' : '400'}">${parseFloat(row.current || 0).toFixed(1)}${isFaulty ? ' (!)' : ''}</td>
         <td>${row.powerLampu || 0}</td>
         <td style="color:${kondisiColor};font-weight:600">${row.kondisi || '-'}</td>
@@ -135,7 +133,7 @@ function exportToPDF(data, summary, filterZone, filterDevice) {
     <thead>
       <tr>
         <th>#</th><th>Waktu</th><th>Device</th><th>Zona</th>
-        <th>Lux</th><th>Jarak</th><th>Arus (mA)</th>
+        <th>Lux</th><th>Arus (mA)</th>
         <th>PWM</th><th>Kondisi</th>
       </tr>
     </thead>
@@ -299,7 +297,7 @@ export default function Analytics({ token, onUnauthorized }) {
       </div>
 
       {/* ── Filter Bar ── */}
-      <div className="card" style={{ marginBottom: '20px', padding: '14px 20px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="card filter-bar" style={{ marginBottom: '20px', padding: '14px 20px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontWeight: '700', fontSize: '11px', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>FILTER:</span>
         <select
           className="form-input"
@@ -371,18 +369,18 @@ export default function Analytics({ token, onUnauthorized }) {
       </div>
 
       {/* ── Chart + Efficiency ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: '20px', marginBottom: '20px' }}>
+      <div className="responsive-grid-custom" style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: '20px', marginBottom: '20px' }}>
         <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '8px' }}>
             <div>
-              <h3 style={{ fontSize: '15px', marginBottom: '3px' }}>Tren Sensor — Lux &amp; Daya</h3>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>50 data terbaru</p>
+              <h3 style={{ fontSize: '15px', marginBottom: '5px' }}>Tren Sensor — Lux &amp; Daya</h3>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{chartData.length} data terbaru</p>
             </div>
-            <div style={{ display: 'flex', gap: '14px', fontSize: '11px', fontWeight: '600' }}>
+            <div style={{ display: 'flex', gap: '14px', fontSize: '11px', fontWeight: '600', marginRight: '1px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-blue)' }} /> Lux
               </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px'  }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-green)' }} /> Daya (PWM)
               </span>
             </div>
@@ -541,7 +539,7 @@ export default function Analytics({ token, onUnauthorized }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
             <thead>
               <tr style={{ background: '#f8fafc', fontSize: '10px', fontWeight: '700', color: 'var(--text-secondary)', letterSpacing: '0.8px' }}>
-                {['#', 'WAKTU', 'DEVICE', 'ZONA', 'LAMPU', 'LUX', 'JARAK', 'ORANG', 'ARUS (mA)', 'PWM', 'KONDISI', 'TRIGGER'].map(h => (
+                {['NO', 'WAKTU', 'DEVICE', 'ZONA', 'LAMPU', 'LUX', 'ORANG', 'ARUS (mA)', 'PWM', 'KONDISI', 'TRIGGER'].map(h => (
                   <th key={h} style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -567,7 +565,6 @@ export default function Analytics({ token, onUnauthorized }) {
                       {getZoneLamps(row.zone)} unit
                     </td>
                     <td style={{ padding: '9px 14px' }}>{parseFloat(row.lux || 0).toFixed(1)}</td>
-                    <td style={{ padding: '9px 14px' }}>{parseFloat(row.jarak || 0).toFixed(1)} cm</td>
                     <td style={{ padding: '9px 14px' }}>
                       <span style={{ fontSize: '10px', fontWeight: '600', padding: '2px 6px', borderRadius: '6px', background: row.sedangAdaOrang ? '#dcfce7' : '#f3f4f6', color: row.sedangAdaOrang ? '#16a34a' : '#9ca3af' }}>
                         {row.sedangAdaOrang ? 'Ya' : 'Tidak'}

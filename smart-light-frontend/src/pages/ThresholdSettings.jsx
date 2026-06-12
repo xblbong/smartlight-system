@@ -130,7 +130,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
       <InlineAlert type={alertType} message={alertMsg} />
 
       {/* ── Main Grid ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', marginBottom: '24px' }}>
+      <div className="responsive-grid-custom" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', marginBottom: '24px' }}>
         {/* LDR Card */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', padding: '32px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '36px' }}>
@@ -259,7 +259,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
         </h3>
 
         {/* Decision Flow */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
+        <div className="responsive-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
           <div style={{ padding: '20px', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--accent-blue)', marginBottom: '12px', letterSpacing: '0.5px' }}>ALUR KEPUTUSAN LAMPU</div>
             <div style={{ fontSize: '13px', lineHeight: '2.2', fontFamily: 'monospace' }}>
@@ -318,7 +318,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
         </div>
 
         {/* Connection to other modules */}
-        <div style={{ padding: '16px 20px', background: '#eff6ff', borderRadius: '10px', fontSize: '13px', lineHeight: '1.8', color: '#1e40af' }}>
+        {/* <div style={{ padding: '16px 20px', background: '#eff6ff', borderRadius: '10px', fontSize: '13px', lineHeight: '1.8', color: '#1e40af' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Link2 size={16} /> <strong>Koneksi ke Modul Lain:</strong></span>
           <ul style={{ margin: '8px 0 0', paddingLeft: '20px' }}>
             <li><strong>Dashboard:</strong> Menampilkan Lux Threshold aktif dan status setiap zona (nyala/redup/mati) berdasarkan parameter ini</li>
@@ -326,7 +326,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
             <li><strong>Analytics:</strong> Data log sensor mencatat setiap pembacaan lux vs threshold untuk audit efisiensi</li>
             <li><strong>Simulator (ESP32):</strong> Mengambil nilai threshold ini setiap 30 detik via API <code>/api/settings</code></li>
           </ul>
-        </div>
+        </div> */}
       </div>
 
       {/* ── Action Buttons ── */}
