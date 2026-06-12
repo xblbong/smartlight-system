@@ -1,18 +1,17 @@
-FROM php:8.3-fpm-alpine
+FROM php:8.3-fpm
 
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl zip unzip \
-    libzip-dev oniguruma-dev icu-dev \
-    freetype-dev libjpeg-turbo-dev libpng-dev \
-    netcat-openbsd
+    libzip-dev libonig-dev libicu-dev \
+    libfreetype6-dev libjpeg62-turbo-dev libpng-dev \
+    netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apk add --no-cache --virtual .build-deps autoconf g++ make \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install \
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) \
     pdo pdo_mysql mbstring zip intl bcmath opcache gd \
     && pecl install redis \
-    && docker-php-ext-enable redis \
-    && apk del .build-deps
+    && docker-php-ext-enable redis
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
