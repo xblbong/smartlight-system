@@ -35,7 +35,7 @@ services:
     networks:
       - smartlight-network
 
-  # ── Frontend (React SPA + Nginx, expose port 80) ──
+  # ── Frontend (React SPA + Nginx, expose port 80 & 443) ──
   frontend:
     build:
       context: .
@@ -46,6 +46,9 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       nginx:
         condition: service_started
