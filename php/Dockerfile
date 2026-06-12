@@ -17,10 +17,14 @@ WORKDIR /var/www/html
 # Copy composer files first (layer caching)
 COPY ./smart-light-backend/composer.json ./smart-light-backend/composer.lock ./
 
-RUN composer install --no-dev --optimize-autoloader
+# Install deps tanpa jalankan scripts (artisan belum ada)
+RUN composer install --no-dev --optimize-autoloader --no-scripts
 
-# Copy full source
+# Copy full source (termasuk artisan)
 COPY ./smart-light-backend ./
+
+# Jalankan scripts yang butuh artisan sekarang
+RUN composer dump-autoload --optimize
 
 COPY ./php/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
