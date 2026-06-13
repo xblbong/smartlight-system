@@ -47,7 +47,7 @@ Route::middleware('device.auth')->group(function () {
     // Ambil dan acknowledge perintah kontrol
     Route::get('/device/control/pending', [DashboardController::class, 'pendingControl']);
     Route::post('/device/control/ack', [DashboardController::class, 'ackControl']);
-
-    // Settings GET agar ESP32 bisa fetch threshold
-    Route::get('/settings', [DashboardController::class, 'getSettings']);
 });
+
+// ── Settings (Public — bisa diakses ESP32 tanpa API key, dan admin dengan token) ──
+Route::get('/settings', [DashboardController::class, 'getSettings']);

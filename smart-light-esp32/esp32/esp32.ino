@@ -318,7 +318,7 @@ void loop() {
           HTTPClient httpAck;
           httpAck.begin(apiAckUrl);
           httpAck.addHeader("Content-Type", "application/json");
-          httpAck.addHeader("X-API-Key", apiKey);
+          httpAck.addHeader("X-API-Key", API_KEY);
           httpAck.POST("{\"ids\":[" + String(id) + "]}");
           httpAck.end();
         }
