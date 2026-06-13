@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Sun, Timer, Save, RotateCcw, Check, GitBranch, Settings, Link2, AlertCircle } from 'lucide-react'
 import { apiFetch, getErrorMessage } from '../lib/api'
+import ConfirmModal from '../components/ConfirmModal'
 
 // ─── Toast (inline) ──────────────────────────────────────────
 function InlineAlert({ type, message }) {
@@ -20,6 +21,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
   const [saving, setSaving] = useState(false)
   const [alertMsg, setAlertMsg] = useState('')
   const [alertType, setAlertType] = useState('success')
+  const [modal, setModal] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -77,8 +79,21 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
     setInputError('')
   }
 
-  const handleSave = async () => {
+  const handleSaveClick = () => {
     if (inputError) return
+    setModal({
+      title: 'Simpan Konfigurasi',
+      message: `Yakin ingin menyimpan pengaturan? Lux Threshold: ${settings.lux_threshold} lux, Delay: ${settings.pir_delay} detik.`,
+      variant: 'info',
+      confirmText: 'Ya, Simpan',
+      onConfirm: () => {
+        setModal(null)
+        doSave()
+      },
+    })
+  }
+
+  const doSave = async () => {
     setSaving(true)
     try {
       await apiFetch('/settings', {
@@ -114,6 +129,23 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
   // Efficiency estimate based on threshold (outdoor: 20-500 lux range)
   const effPct = Math.round(60 + (settings.lux_threshold / 500) * 30)
 
+  // Delay labels
+  const getDelayLabel = (val) => {
+    if (val <= 5) return 'Sangat Cepat'
+    if (val <= 15) return 'Cepat'
+    if (val <= 30) return 'Normal'
+    if (val <= 45) return 'Lama'
+    return 'Sangat Lama'
+  }
+
+  const getDelayColor = (val) => {
+    if (val <= 5) return '#ef4444'
+    if (val <= 15) return '#f59e0b'
+    if (val <= 30) return '#10b981'
+    if (val <= 45) return '#3b82f6'
+    return '#8b5cf6'
+  }
+
   return (
     <div>
       {/* ── Page Header ── */}
@@ -128,6 +160,15 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
       </div>
 
       <InlineAlert type={alertType} message={alertMsg} />
+      <ConfirmModal
+        isOpen={!!modal}
+        title={modal?.title || ''}
+        message={modal?.message || ''}
+        variant={modal?.variant || 'info'}
+        confirmText={modal?.confirmText || 'Ya'}
+        onConfirm={modal?.onConfirm || (() => {})}
+        onCancel={() => setModal(null)}
+      />
 
       {/* ── Main Grid ── */}
       <div className="responsive-grid-custom" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', marginBottom: '24px' }}>
@@ -202,53 +243,68 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
           <div style={{ marginTop: '32px', padding: '16px', background: 'rgba(255,255,255,0.08)', borderRadius: '10px' }}>
             <div style={{ fontSize: '11px', color: '#93c5fd', marginBottom: '8px' }}>PRATINJAU AMBANG BATAS</div>
             <div style={{ fontSize: '13px', color: 'white' }}>
-              Lampu diprioritaskan menyala jika mendeteksi objek <strong>(jarak &lt; 15 cm)</strong> dan intensitas lingkungan <strong>&lt; {settings.lux_threshold} lux</strong>
+              Lampu diprioritaskan menyala jika mendeteksi objek <strong>(jarak &lt; 3 cm)</strong> dan intensitas lingkungan <strong>&lt; {settings.lux_threshold} lux</strong>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── PIR Delay Card ── */}
-      <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '28px 32px', marginBottom: '32px', background: '#f8fafc', border: '1px solid var(--border-color)', gap: '20px', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+      {/* ── Delay Ultrasonik Card (Slider) ── */}
+      <div className="card" style={{ padding: '32px', marginBottom: '32px', background: '#f8fafc', border: '1px solid var(--border-color)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '28px' }}>
           <div style={{ width: '52px', height: '52px', background: 'white', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.06)' }}>
-            <Timer size={26} color="var(--accent-green)" />
+            <Timer size={26} color={getDelayColor(settings.pir_delay)} />
           </div>
-          <div>
+          <div style={{ flex: 1 }}>
             <h3 style={{ fontSize: '18px', marginBottom: '4px' }}>Delay Ultrasonik</h3>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
               Waktu tunggu setelah objek tidak terdeteksi sebelum lampu kembali ke mode redup (40%)
             </p>
           </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '32px', fontWeight: '800', color: getDelayColor(settings.pir_delay) }}>
+              {settings.pir_delay}
+              <span style={{ fontSize: '14px', fontWeight: '500', color: 'var(--text-secondary)', marginLeft: '4px' }}>detik</span>
+            </div>
+            <div style={{ fontSize: '11px', fontWeight: '700', color: getDelayColor(settings.pir_delay), letterSpacing: '0.5px' }}>
+              {getDelayLabel(settings.pir_delay).toUpperCase()}
+            </div>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', background: 'white', borderRadius: '10px', padding: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.06)' }}>
-            <button
-              className="btn btn-outline"
-              style={{ border: 'none', padding: '8px 18px', fontSize: '20px', lineHeight: 1 }}
-              onClick={() => setSettings(s => ({ ...s, pir_delay: Math.max(1, s.pir_delay - 1) }))}
-            >−</button>
-            <div style={{ padding: '0 20px', textAlign: 'center', minWidth: '80px' }}>
-              <div style={{ fontSize: '28px', fontWeight: '800' }}>{settings.pir_delay}</div>
-              <div style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-secondary)' }}>DETIK</div>
-            </div>
-            <button
-              className="btn btn-outline"
-              style={{ border: 'none', padding: '8px 18px', fontSize: '20px', lineHeight: 1 }}
-              onClick={() => setSettings(s => ({ ...s, pir_delay: Math.min(60, s.pir_delay + 1) }))}
-            >+</button>
+        {/* Slider */}
+        <div style={{ padding: '0 8px' }}>
+          <input
+            type="range"
+            className="range-slider"
+            min="1"
+            max="60"
+            value={settings.pir_delay}
+            onChange={e => setSettings(s => ({ ...s, pir_delay: parseInt(e.target.value) }))}
+            style={{ accentColor: getDelayColor(settings.pir_delay) }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>
+            <span>1 detik (Sangat Cepat)</span>
+            <span>60 detik (Sangat Lama)</span>
           </div>
+        </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>STATUS</div>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--accent-green)' }}>Optimal</div>
-            </div>
-            <div style={{ width: '36px', height: '36px', borderRadius: '50%', border: '2px solid var(--accent-green)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: 'var(--accent-green)' }} />
-            </div>
-          </div>
+        {/* Quick presets */}
+        <div style={{ display: 'flex', gap: '8px', marginTop: '20px', flexWrap: 'wrap' }}>
+          {[3, 5, 10, 15, 30, 45].map(val => (
+            <button
+              key={val}
+              onClick={() => setSettings(s => ({ ...s, pir_delay: val }))}
+              style={{
+                padding: '8px 16px', borderRadius: '8px', border: settings.pir_delay === val ? `2px solid ${getDelayColor(val)}` : '1px solid var(--border-color)',
+                background: settings.pir_delay === val ? `${getDelayColor(val)}15` : 'white',
+                color: settings.pir_delay === val ? getDelayColor(val) : 'var(--text-secondary)',
+                fontSize: '13px', fontWeight: '600', cursor: 'pointer',
+              }}
+            >
+              {val}s
+            </button>
+          ))}
         </div>
       </div>
 
@@ -266,8 +322,8 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
               <div><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--accent-blue)', color: 'white', fontSize: '10px', fontWeight: '700', marginRight: '6px' }}>1</span> Baca sensor LDR &rarr; <strong>Nilai Lux</strong></div>
               <div><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--accent-blue)', color: 'white', fontSize: '10px', fontWeight: '700', marginRight: '6px' }}>2</span> <strong>Jika Lux &lt; {settings.lux_threshold}</strong> &rarr; Lingkungan GELAP</div>
               <div style={{ paddingLeft: '20px' }}>&rarr; Baca sensor Ultrasonik &rarr; <strong>Jarak (cm)</strong></div>
-              <div style={{ paddingLeft: '20px' }}>&rarr; <strong>Jika jarak &lt; 15 cm</strong> &rarr; Ada orang &rarr; PWM = <span style={{ color: '#16a34a', fontWeight: '700' }}>255 (100%)</span></div>
-              <div style={{ paddingLeft: '20px' }}>&rarr; <strong>Jika jarak ≥ 15 cm</strong> &rarr; Tidak ada orang &rarr; PWM = <span style={{ color: '#d97706', fontWeight: '700' }}>102 (40%)</span></div>
+              <div style={{ paddingLeft: '20px' }}>&rarr; <strong>Jika jarak &lt; 3 cm</strong> &rarr; Ada orang &rarr; PWM = <span style={{ color: '#16a34a', fontWeight: '700' }}>255 (100%)</span></div>
+              <div style={{ paddingLeft: '20px' }}>&rarr; <strong>Jika jarak ≥ 3 cm</strong> &rarr; Tidak ada orang &rarr; PWM = <span style={{ color: '#d97706', fontWeight: '700' }}>102 (40%)</span></div>
               <div><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px', borderRadius: '50%', background: 'var(--accent-blue)', color: 'white', fontSize: '10px', fontWeight: '700', marginRight: '6px' }}>3</span> <strong>Jika Lux ≥ {settings.lux_threshold}</strong> &rarr; Lingkungan TERANG</div>
               <div style={{ paddingLeft: '20px' }}>&rarr; PWM = <span style={{ color: '#dc2626', fontWeight: '700' }}>0 (Mati)</span> &mdash; Hemat energi</div>
             </div>
@@ -282,11 +338,11 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
                 <span>Jarak Deteksi Ultrasonik</span>
-                <strong>{'< 15 cm'}</strong>
+                <strong style={{ color: '#8b5cf6' }}>{'< 3 cm'}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
                 <span>Delay Setelah Objek Pergi</span>
-                <strong style={{ color: 'var(--accent-green)' }}>{settings.pir_delay} detik</strong>
+                <strong style={{ color: getDelayColor(settings.pir_delay) }}>{settings.pir_delay} detik</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
                 <span>PWM Terang Penuh (ada orang)</span>
@@ -308,25 +364,14 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
         <div style={{ padding: '20px', background: '#1e3a8a', borderRadius: '12px', color: 'white', marginBottom: '20px' }}>
           <div style={{ fontSize: '11px', fontWeight: '700', color: '#93c5fd', marginBottom: '12px', letterSpacing: '0.5px' }}>RUMUS PENENTUAN KONDISI LAMPU</div>
           <div style={{ fontFamily: 'monospace', fontSize: '14px', lineHeight: '2.2' }}>
-            <div><strong style={{ color: '#86efac' }}>NYALA_PENUH</strong> = (LDR_Lux &lt; <span style={{ color: '#fbbf24' }}>{settings.lux_threshold}</span>) ∧ (Jarak_Ultrasonik &lt; <span style={{ color: '#fbbf24' }}>15 cm</span>)</div>
-            <div><strong style={{ color: '#fbbf24' }}>REDUP_40%</strong>&nbsp;&nbsp;&nbsp; = (LDR_Lux &lt; <span style={{ color: '#fbbf24' }}>{settings.lux_threshold}</span>) ∧ (Jarak_Ultrasonik ≥ <span style={{ color: '#fbbf24' }}>15 cm</span>)</div>
+            <div><strong style={{ color: '#86efac' }}>NYALA_PENUH</strong> = (LDR_Lux &lt; <span style={{ color: '#fbbf24' }}>{settings.lux_threshold}</span>) ∧ (Jarak_Ultrasonik &lt; <span style={{ color: '#fbbf24' }}>3 cm</span>)</div>
+            <div><strong style={{ color: '#fbbf24' }}>REDUP_40%</strong>&nbsp;&nbsp;&nbsp; = (LDR_Lux &lt; <span style={{ color: '#fbbf24' }}>{settings.lux_threshold}</span>) ∧ (Jarak_Ultrasonik ≥ <span style={{ color: '#fbbf24' }}>3 cm</span>)</div>
             <div><strong style={{ color: '#f87171' }}>MATI</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = (LDR_Lux ≥ <span style={{ color: '#fbbf24' }}>{settings.lux_threshold}</span>)</div>
           </div>
           <div style={{ marginTop: '12px', fontSize: '12px', color: '#bfdbfe' }}>
             Dimana: LDR_Lux = pembacaan sensor cahaya (0–500 lux), Jarak = sensor ultrasonik HC-SR04 (cm)
           </div>
         </div>
-
-        {/* Connection to other modules */}
-        {/* <div style={{ padding: '16px 20px', background: '#eff6ff', borderRadius: '10px', fontSize: '13px', lineHeight: '1.8', color: '#1e40af' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Link2 size={16} /> <strong>Koneksi ke Modul Lain:</strong></span>
-          <ul style={{ margin: '8px 0 0', paddingLeft: '20px' }}>
-            <li><strong>Dashboard:</strong> Menampilkan Lux Threshold aktif dan status setiap zona (nyala/redup/mati) berdasarkan parameter ini</li>
-            <li><strong>Control Center:</strong> Override manual bisa memaksa lampu ON/OFF melewati threshold ini</li>
-            <li><strong>Analytics:</strong> Data log sensor mencatat setiap pembacaan lux vs threshold untuk audit efisiensi</li>
-            <li><strong>Simulator (ESP32):</strong> Mengambil nilai threshold ini setiap 30 detik via API <code>/api/settings</code></li>
-          </ul>
-        </div> */}
       </div>
 
       {/* ── Action Buttons ── */}
@@ -337,7 +382,7 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
         <button
           className="btn btn-primary"
           style={{ padding: '12px 28px' }}
-          onClick={handleSave}
+          onClick={handleSaveClick}
           disabled={saving || !!inputError}
         >
           <Save size={16} />

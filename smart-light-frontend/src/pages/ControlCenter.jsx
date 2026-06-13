@@ -9,6 +9,7 @@ import {
   Siren,
 } from "lucide-react";
 import { apiFetch, getErrorMessage } from "../lib/api";
+import ConfirmModal from "../components/ConfirmModal";
 
 // Nama zona & jumlah lampu datang dari API (dikirim ESP32), bukan hardcode di sini
 
@@ -40,6 +41,7 @@ export default function ControlCenter({ token, onUnauthorized }) {
   const [toasts, setToasts] = useState([]);
   const [pending, setPending] = useState({}); // { 'deviceId-zone': 'ON'|'OFF' }
   const toastRef = useRef(0);
+  const [modal, setModal] = useState(null); // { title, message, variant, onConfirm }
 
   const addToast = (message, type = "success") => {
     const id = ++toastRef.current;
@@ -80,7 +82,7 @@ export default function ControlCenter({ token, onUnauthorized }) {
   useEffect(() => {
     const controller = new AbortController();
     fetchDevices(controller.signal);
-    const id = setInterval(() => fetchDevices(controller.signal), 8000);
+    const id = setInterval(() => fetchDevices(controller.signal), 3000);
     return () => {
       clearInterval(id);
       controller.abort();
@@ -136,19 +138,27 @@ export default function ControlCenter({ token, onUnauthorized }) {
         : action === "OFF"
           ? "mematikan"
           : "mengembalikan ke otomatis untuk";
-    if (!window.confirm(`Yakin ingin ${actionText} SEMUA zona?`)) return;
-    const results = await Promise.all(
-      devices.map((dev) =>
-        handleControl(dev.device_id, dev.zone, action, true, true),
-      ),
-    );
-    const ok = results.filter(Boolean).length;
-    addToast(
-      `Master ${action}: ${ok}/${devices.length} zona berhasil`,
-      ok === devices.length ? "success" : "error",
-    );
-    // Single refetch setelah semua command terkirim
-    setTimeout(fetchDevices, 1500);
+
+    setModal({
+      title: `Konfirmasi Master ${action}`,
+      message: `Yakin ingin ${actionText} SEMUA zona? Semua ${devices.length} zona akan terpengaruh.`,
+      variant: action === "EMERGENCY" ? "danger" : "warning",
+      confirmText: action === "EMERGENCY" ? "Ya, Aktifkan Darurat" : `Ya, ${action}`,
+      onConfirm: async () => {
+        setModal(null);
+        const results = await Promise.all(
+          devices.map((dev) =>
+            handleControl(dev.device_id, dev.zone, action, true, true),
+          ),
+        );
+        const ok = results.filter(Boolean).length;
+        addToast(
+          `Master ${action}: ${ok}/${devices.length} zona berhasil`,
+          ok === devices.length ? "success" : "error",
+        );
+        setTimeout(fetchDevices, 1500);
+      },
+    });
   };
 
   // Deteksi offline: menggunakan flag is_online dari backend
@@ -172,6 +182,15 @@ export default function ControlCenter({ token, onUnauthorized }) {
   return (
     <div>
       <Toast toasts={toasts} removeToast={removeToast} />
+      <ConfirmModal
+        isOpen={!!modal}
+        title={modal?.title || ''}
+        message={modal?.message || ''}
+        variant={modal?.variant || 'danger'}
+        confirmText={modal?.confirmText || 'Ya'}
+        onConfirm={modal?.onConfirm || (() => {})}
+        onCancel={() => setModal(null)}
+      />
 
       {/* ── Page Header ── */}
       <div className="page-header" style={{ marginBottom: "32px" }}>
@@ -429,12 +448,16 @@ export default function ControlCenter({ token, onUnauthorized }) {
                       className="btn btn-danger"
                       disabled={isPend}
                       onClick={() => {
-                        if (
-                          window.confirm(
-                            `⚠️ AKTIFKAN MODE DARURAT untuk ${dev.zone_name || "Zone " + dev.zone}?\nLampu akan menyala 100% terlepas dari kondisi sensor.`,
-                          )
-                        )
-                          handleControl(dev.device_id, dev.zone, "EMERGENCY");
+                        setModal({
+                          title: `Mode Darurat — ${dev.zone_name || "Zone " + dev.zone}`,
+                          message: `AKTIFKAN MODE DARURAT? Lampu akan menyala 100% terlepas dari kondisi sensor.`,
+                          variant: "danger",
+                          confirmText: "Ya, Aktifkan Darurat",
+                          onConfirm: () => {
+                            setModal(null);
+                            handleControl(dev.device_id, dev.zone, "EMERGENCY");
+                          },
+                        });
                       }}
                       style={{
                         minWidth: "100px",
@@ -506,14 +529,7 @@ export default function ControlCenter({ token, onUnauthorized }) {
                 fontWeight: "700",
                 border: "none",
               }}
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "⚠️ AKTIFKAN MODE DARURAT untuk SEMUA zona?\nSemua lampu akan menyala 100% terlepas dari kondisi sensor.",
-                  )
-                )
-                  handleMasterControl("EMERGENCY");
-              }}
+              onClick={() => handleMasterControl("EMERGENCY")}
             >
               <Siren
                 size={14}

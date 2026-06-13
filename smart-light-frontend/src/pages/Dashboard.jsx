@@ -78,7 +78,7 @@ export default function Dashboard({ token, onUnauthorized }) {
   useEffect(() => {
     const controller = new AbortController();
     fetchData(controller.signal);
-    const id = setInterval(() => fetchData(controller.signal), 8000);
+    const id = setInterval(() => fetchData(controller.signal), 3000);
     return () => {
       clearInterval(id);
       controller.abort();

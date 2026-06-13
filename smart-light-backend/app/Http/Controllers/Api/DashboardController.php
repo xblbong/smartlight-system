@@ -19,7 +19,7 @@ class DashboardController extends Controller
      */
     public function summary()
     {
-        $data = Cache::remember('api.summary', 5, function () {
+        $data = Cache::remember('api.summary', 2, function () {
             $espCount = Device::count();
 
             // Aggregasi di SQL, bukan di PHP
