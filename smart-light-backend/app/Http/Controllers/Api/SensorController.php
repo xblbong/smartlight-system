@@ -137,7 +137,7 @@ class SensorController extends Controller
      */
     public function latest()
     {
-        $data = Cache::remember('api.latest', 1, function () {
+        $data = Cache::remember('api.latest', 0.5, function () {
             // Sub-query: id terbesar per device+zone
             // Dengan index (device_id, zone, created_at), query ini sangat cepat
             $latestIds = DB::table('sensor_logs')

@@ -195,6 +195,8 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
             </div>
             <input
               type="range"
+              id="lux-slider"
+              name="lux_threshold"
               className="range-slider"
               min="0"
               max="500"
@@ -209,11 +211,13 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
 
           {/* Number Input */}
           <div style={{ marginTop: 'auto' }}>
-            <label className="form-label" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <label htmlFor="lux-input" className="form-label" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               INPUT MANUAL NILAI LUX
             </label>
             <input
               type="number"
+              id="lux-input"
+              name="lux_threshold_manual"
               className={`form-input${inputError ? ' is-error' : ''}`}
               value={rawInput}
               min="0"
@@ -276,6 +280,8 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
         <div style={{ padding: '0 8px' }}>
           <input
             type="range"
+            id="delay-slider"
+            name="pir_delay"
             className="range-slider"
             min="1"
             max="60"

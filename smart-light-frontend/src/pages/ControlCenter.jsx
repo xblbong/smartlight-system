@@ -58,7 +58,11 @@ export default function ControlCenter({ token, onUnauthorized }) {
   const fetchDevices = useCallback(async (signal) => {
     try {
       const data = await apiFetch("/device/latest", { token, signal });
-      setDevices(Array.isArray(data) ? data : []);
+      if (Array.isArray(data) && data.length > 0) {
+        setDevices(data);
+      }
+      // Jika data kosong, jangan overwrite state yang sudah ada
+      // (mungkin cache belum update)
     } catch (error) {
       if (error.name === 'AbortError') return;
 
@@ -67,13 +71,8 @@ export default function ControlCenter({ token, onUnauthorized }) {
         return;
       }
 
-      addToast(
-        getErrorMessage(
-          error,
-          "Tidak dapat memuat device dari server backend.",
-        ),
-        "error",
-      );
+      // Jangan tampilkan error toast untuk polling biasa
+      console.warn("Fetch devices error:", error);
     } finally {
       setLoading(false);
     }
@@ -106,7 +105,7 @@ export default function ControlCenter({ token, onUnauthorized }) {
       }
       // Hanya refetch jika bukan bagian dari master control
       if (!skipRefetch) {
-        setTimeout(fetchDevices, 1500);
+        setTimeout(() => fetchDevices(), 500);
       }
       return true;
     } catch (error) {
@@ -156,7 +155,7 @@ export default function ControlCenter({ token, onUnauthorized }) {
           `Master ${action}: ${ok}/${devices.length} zona berhasil`,
           ok === devices.length ? "success" : "error",
         );
-        setTimeout(fetchDevices, 1500);
+        setTimeout(() => fetchDevices(), 500);
       },
     });
   };
