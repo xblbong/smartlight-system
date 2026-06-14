@@ -219,7 +219,7 @@ class SensorController extends Controller
                         'cache_updated_at' => $item->cache_updated_at ? \Carbon\Carbon::parse($item->cache_updated_at)->toIso8601String() : null,
                     ],
                 ];
-            });
+            })->toArray();
         });
 
         return response()->json($data);

@@ -99,7 +99,7 @@ class DashboardController extends Controller
                     'is_active'    => $z->updated_at !== null,
                     'is_faulty'    => (bool) ($z->is_faulty ?? false),
                 ];
-            });
+            })->toArray();
         });
 
         return response()->json($data);
@@ -294,7 +294,7 @@ class DashboardController extends Controller
     public function getSettings()
     {
         $settings = Cache::remember('api.settings', 3600, function () {
-            return SystemSetting::all()->pluck('value', 'key');
+            return SystemSetting::all()->pluck('value', 'key')->toArray();
         });
 
         return response()->json($settings);
