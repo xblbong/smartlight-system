@@ -30,8 +30,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/device/zones', [DashboardController::class, 'zones']);
     Route::post('/device/control', [DashboardController::class, 'control']);
     
-    // Settings
-    Route::get('/settings', [DashboardController::class, 'getSettings']);
+    // Settings (POST only — GET dipindah ke public)
     Route::post('/settings', [DashboardController::class, 'saveSettings']);
 
     // Analytics
