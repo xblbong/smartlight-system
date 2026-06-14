@@ -30,6 +30,7 @@ if sys.platform == 'win32':
 # =========================================================
 API_BASE   = "http://127.0.0.1:8000/api"
 API_URL    = f"{API_BASE}/device/data"
+API_KEY    = "smartlight-esp32-2026-secret"  # Sama dengan DEVICE_API_KEY di .env
 INTERVAL   = 5       # detik antar pengiriman per device
 
 # Daftar device yang disimulasikan
@@ -59,7 +60,7 @@ manual_overrides = {}
 
 # Threshold default (akan di-sync dari backend)
 settings_cache = {
-    "ldr_sensitivity": 100,
+    "lux_threshold": 100,
     "pir_delay": 3,
 }
 last_settings_fetch = 0
@@ -76,15 +77,15 @@ def fetch_settings():
         return  # belum waktunya fetch
 
     try:
-        res = requests.get(f"{API_BASE}/settings", timeout=8)
+        res = requests.get(f"{API_BASE}/settings", headers={"X-API-Key": API_KEY}, timeout=8)
         if res.status_code == 200:
             data = res.json()
-            if "ldr_sensitivity" in data:
-                settings_cache["ldr_sensitivity"] = int(data["ldr_sensitivity"])
+            if "lux_threshold" in data:
+                settings_cache["lux_threshold"] = int(data["lux_threshold"])
             if "pir_delay" in data:
                 settings_cache["pir_delay"] = int(data["pir_delay"])
             last_settings_fetch = now
-            print(f"  [SYNC] Settings dari server: LDR threshold={settings_cache['ldr_sensitivity']} lux, PIR delay={settings_cache['pir_delay']} detik")
+            print(f"  [SYNC] Settings dari server: LDR threshold={settings_cache['lux_threshold']} lux, PIR delay={settings_cache['pir_delay']} detik")
     except Exception:
         pass  # gagal fetch settings, pakai cache terakhir
 
@@ -98,6 +99,7 @@ def fetch_pending_commands(device_id):
         res = requests.get(
             f"{API_BASE}/device/control/pending",
             params={"device_id": device_id},
+            headers={"X-API-Key": API_KEY},
             timeout=8
         )
         if res.status_code == 200:
@@ -122,6 +124,7 @@ def fetch_pending_commands(device_id):
                         requests.post(
                             f"{API_BASE}/device/control/ack",
                             json={"ids": ack_ids},
+                            headers={"X-API-Key": API_KEY},
                             timeout=8
                         )
                     except Exception:
@@ -146,7 +149,7 @@ def buat_payload(device_id: str, zone: str) -> dict:
     masa_tunggu    = not ada_orang and random.random() < (pir_delay_sec / 60.0)
 
     # Ambil threshold dari settings yang di-sync dari backend
-    threshold = settings_cache.get("ldr_sensitivity", 100)
+    threshold = settings_cache.get("lux_threshold", 100)
 
     # Cek apakah ada override manual dari dashboard
     override_key = f"{device_id}-{zone}"
@@ -259,7 +262,7 @@ def kirim_semua_device():
         kiriman += 1
 
         try:
-            res = requests.post(API_URL, json=payload, timeout=10)
+            res = requests.post(API_URL, json=payload, headers={"X-API-Key": API_KEY}, timeout=10)
 
             if res.status_code in (200, 201):
                 faulty_str = " [⚠ RUSAK!]" if payload["current"] < 10 and payload["powerLampu"] > 0 else ""

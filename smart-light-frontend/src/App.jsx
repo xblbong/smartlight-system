@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom'
-import { LayoutDashboard, SlidersHorizontal, Activity, BarChart3, LogOut, Wifi } from 'lucide-react'
+import { LayoutDashboard, SlidersHorizontal, Activity, BarChart3, LogOut, Wifi, Menu, X } from 'lucide-react'
 import Login from './Login'
 import Dashboard from './pages/Dashboard'
 import ControlCenter from './pages/ControlCenter'
@@ -11,7 +11,7 @@ import { apiFetch, getErrorMessage } from './lib/api'
 import './index.css'
 
 // ─── Sidebar Component ───────────────────────────────────────
-function Sidebar({ user, onLogout }) {
+function Sidebar({ user, onLogout, isOpen, onClose }) {
   const location = useLocation()
   const role = user?.role || 'admin_sarpras'
 
@@ -25,56 +25,81 @@ function Sidebar({ user, onLogout }) {
   const navItems = allNavItems.filter(item => item.roles.includes(role))
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-header">
-        <img src={ubLogo} alt="UB Logo" className="sidebar-logo" />
-        <div className="sidebar-brand">UB Adaptive</div>
-        <div className="sidebar-subbrand">Smart Lighting Admin</div>
-      </div>
+    <>
+      {/* Overlay backdrop — klik untuk tutup sidebar di mobile */}
+      {isOpen && <div className="sidebar-overlay" onClick={onClose} />}
 
-      <nav className="sidebar-nav">
-        {navItems.map(item => {
-          const Icon = item.icon
-          const isActive = location.pathname.startsWith(item.path)
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`nav-item ${isActive ? 'active' : ''}`}
-            >
-              <Icon size={18} />
-              {item.label}
-            </Link>
-          )
-        })}
-      </nav>
-
-      <div className="sidebar-footer">
-        <div className="user-profile">
-          <div className="user-avatar">
-            {user?.name?.charAt(0)?.toUpperCase() || 'U'}
-          </div>
-          <div className="user-info">
-            <span className="user-name">{user?.name || 'Admin User'}</span>
-            <span className="user-email">{user?.email || 'admin@ub.ac.id'}</span>
-          </div>
+      <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <img src={ubLogo} alt="UB Logo" className="sidebar-logo" />
+          <div className="sidebar-brand">UB Adaptive</div>
+          <div className="sidebar-subbrand">Smart Lighting Admin</div>
+          {/* Close button — hanya tampil di mobile */}
+          <button className="sidebar-close-btn" onClick={onClose}>
+            <X size={20} />
+          </button>
         </div>
-        <button className="logout-btn" onClick={onLogout}>
-          <LogOut size={16} />
-          Logout
-        </button>
-      </div>
-    </aside>
+
+        <nav className="sidebar-nav">
+          {navItems.map(item => {
+            const Icon = item.icon
+            const isActive = location.pathname.startsWith(item.path)
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`nav-item ${isActive ? 'active' : ''}`}
+                onClick={onClose} // Tutup sidebar setelah navigasi di mobile
+              >
+                <Icon size={18} />
+                {item.label}
+              </Link>
+            )
+          })}
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="user-profile">
+            <div className="user-avatar">
+              {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+            </div>
+            <div className="user-info">
+              <span className="user-name">{user?.name || 'Admin User'}</span>
+              <span className="user-email">{user?.email || 'admin@ub.ac.id'}</span>
+            </div>
+          </div>
+          <button className="logout-btn" onClick={onLogout}>
+            <LogOut size={16} />
+            Logout
+          </button>
+        </div>
+      </aside>
+    </>
   )
 }
 
 // ─── Main Layout ──────────────────────────────────────────────
 function MainLayout({ user, onLogout, children }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
   return (
     <div className="app-container">
-      <Sidebar user={user} onLogout={onLogout} />
+      <Sidebar
+        user={user}
+        onLogout={onLogout}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
       <main className="main-content">
         <div className="topbar">
+          {/* Hamburger button — hanya tampil di mobile */}
+          <button
+            className="hamburger-btn"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Buka menu"
+          >
+            <Menu size={20} />
+          </button>
           <span className="status-badge online">
             <Wifi size={12} /> Sistem Aktif
           </span>
@@ -124,7 +149,7 @@ export default function App() {
     let active = true
     setAuthReady(false)
 
-    apiFetch('/api/me', { token })
+    apiFetch('/me', { token })
       .then(data => {
         if (!active) return
 
@@ -155,7 +180,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      await apiFetch('/api/logout', {
+      await apiFetch('/logout', {
         method: 'POST',
         token,
       })

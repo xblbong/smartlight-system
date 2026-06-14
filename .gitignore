@@ -1,2 +1,5 @@
 .env
 
+# ESP32 sensitive config
+smart-light-esp32/esp32/config.h
+
