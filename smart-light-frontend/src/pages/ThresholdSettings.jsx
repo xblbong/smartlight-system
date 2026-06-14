@@ -26,22 +26,31 @@ export default function ThresholdSettings({ token, onUnauthorized }) {
   useEffect(() => {
     let active = true
 
+    console.log('[ThresholdSettings] Fetching settings with token:', token ? 'exists' : 'missing')
+
     apiFetch('/settings', { token })
       .then(data => {
-        if (!active) return
+        console.log('[ThresholdSettings] API response:', data)
+        if (!active) {
+          console.log('[ThresholdSettings] Component unmounted, skipping update')
+          return
+        }
 
         if (data.lux_threshold && !isNaN(parseInt(data.lux_threshold))) {
           const v = parseInt(data.lux_threshold)
+          console.log('[ThresholdSettings] Setting lux_threshold to:', v)
           setSettings(prev => ({ ...prev, lux_threshold: v }))
           setRawInput(String(v))
         }
 
         if (data.pir_delay && !isNaN(parseInt(data.pir_delay))) {
-          setSettings(prev => ({ ...prev, pir_delay: parseInt(data.pir_delay) }))
+          const d = parseInt(data.pir_delay)
+          console.log('[ThresholdSettings] Setting pir_delay to:', d)
+          setSettings(prev => ({ ...prev, pir_delay: d }))
         }
       })
       .catch(error => {
-        console.error('Threshold settings fetch error:', error)
+        console.error('[ThresholdSettings] Fetch error:', error)
 
         if (error.status === 401) {
           onUnauthorized?.()
