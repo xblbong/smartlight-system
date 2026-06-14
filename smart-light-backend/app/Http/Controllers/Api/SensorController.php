@@ -9,6 +9,7 @@ use App\Models\Device;
 use App\Models\Zone;
 use App\Models\SystemSetting;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class SensorController extends Controller
 {
@@ -18,11 +19,10 @@ class SensorController extends Controller
      */
     public function store(Request $request)
     {
-        // 1. Validasi data yang masuk dari ESP32/Python
         $validated = $request->validate([
             'device_id'        => 'required|string|max:50',
             'zone'             => 'required|string|max:10',
-            'zone_name'        => 'nullable|string|max:100', // nama lokasi dari konfigurasi ESP32
+            'zone_name'        => 'nullable|string|max:100',
             'lux'              => 'nullable|numeric',
             'jarak'            => 'nullable|numeric',
             'sedangAdaOrang'   => 'nullable|boolean',
@@ -37,24 +37,31 @@ class SensorController extends Controller
             'sensor_status'    => 'nullable|array',
         ]);
 
-        // 2. Auto-register Device and Zone (optimized with updateOrCreate)
-        Device::updateOrCreate(
-            ['device_id' => $validated['device_id']],
-            ['name' => 'ESP32 Device']
-        );
+        // Auto-register Device & Zone — skip jika sudah ada (hemat query)
+        $deviceKey = "device.exists.{$validated['device_id']}";
+        if (!Cache::has($deviceKey)) {
+            Device::updateOrCreate(
+                ['device_id' => $validated['device_id']],
+                ['name' => 'ESP32 Device']
+            );
+            Cache::put($deviceKey, true, 3600);
+        }
 
-        // Simpan zone_name dari ESP32 ke tabel zones (sumber kebenaran nama lokasi)
-        Zone::updateOrCreate(
-            ['device_id' => $validated['device_id'], 'zone_code' => $validated['zone']],
-            ['zone_name' => $validated['zone_name'] ?? null]
-        );
+        $zoneKey = "zone.exists.{$validated['device_id']}.{$validated['zone']}";
+        if (!Cache::has($zoneKey)) {
+            Zone::updateOrCreate(
+                ['device_id' => $validated['device_id'], 'zone_code' => $validated['zone']],
+                ['zone_name' => $validated['zone_name'] ?? null]
+            );
+            Cache::put($zoneKey, true, 3600);
+        }
 
         // Parse sensor status
         $sensorStatus = is_array($validated['sensor_status'] ?? null)
             ? $validated['sensor_status']
             : json_decode($validated['sensor_status'] ?? '{}', true) ?? [];
 
-        // Parse timestamp (handle ISO 8601 format from ESP32)
+        // Parse timestamp
         $timestamp = null;
         if ($validated['timestamp'] ?? null) {
             try {
@@ -66,7 +73,7 @@ class SensorController extends Controller
             $timestamp = now();
         }
 
-        // 3. Simpan ke SensorLogs (Historis)
+        // Simpan ke SensorLogs
         SensorLog::create([
             'device_id' => $validated['device_id'],
             'zone' => $validated['zone'],
@@ -86,9 +93,9 @@ class SensorController extends Controller
             'timestamp' => $timestamp,
         ]);
 
-        // 4. Fault detection - Mengikuti status 'RUSAK' dari ESP32 (yang memiliki buffer penundaan/failCount)
+        // Update device_status_cache
         $is_faulty = (
-            isset($validated['kondisi']) && 
+            isset($validated['kondisi']) &&
             str_contains(strtoupper($validated['kondisi']), 'RUSAK')
         );
         $now = now();
@@ -112,6 +119,10 @@ class SensorController extends Controller
             ['last_lux', 'last_power', 'last_kondisi', 'last_voltage', 'last_current', 'is_faulty', 'updated_at']
         );
 
+        // Invalidate read caches
+        Cache::forget('api.summary');
+        Cache::forget('api.latest');
+
         return response()->json([
             'status' => 'success',
             'message' => 'Data berhasil diterima',
@@ -122,92 +133,95 @@ class SensorController extends Controller
     /**
      * Ambil status terbaru lengkap untuk tiap zona.
      * GET /api/device/latest
+     * Cached 3 detik — real-time tapi tidak membebani DB
      */
     public function latest()
     {
-        // Sub-query: id terbesar per device+zone dari sensor_logs
-        $latestIds = DB::table('sensor_logs')
-            ->select(DB::raw('MAX(id) as id'))
-            ->groupBy('device_id', 'zone')
-            ->pluck('id');
+        $data = Cache::remember('api.latest', 0.5, function () {
+            // Sub-query: id terbesar per device+zone
+            // Dengan index (device_id, zone, created_at), query ini sangat cepat
+            $latestIds = DB::table('sensor_logs')
+                ->select(DB::raw('MAX(id) as id'))
+                ->groupBy('device_id', 'zone')
+                ->pluck('id');
 
-        if ($latestIds->isEmpty()) {
-            return response()->json([]);
-        }
+            if ($latestIds->isEmpty()) {
+                return [];
+            }
 
-        $logs = DB::table('sensor_logs as sl')
-            ->leftJoin('device_status_cache as dsc', function ($join) {
-                $join->on('sl.device_id', '=', 'dsc.device_id')
-                     ->on('sl.zone', '=', 'dsc.zone');
-            })
-            ->leftJoin('zones as z', function ($join) {
-                $join->on('sl.device_id', '=', 'z.device_id')
-                     ->on('sl.zone', '=', 'z.zone_code');
-            })
-            ->whereIn('sl.id', $latestIds)
-            ->select(
-                'sl.device_id',
-                'sl.zone',
-                'z.zone_name',              // nama lokasi dari config ESP32
-                'sl.lux',
-                'sl.jarak',
-                'sl.sedangAdaOrang',
-                'sl.masihMasaTunggu',
-                'sl.tombol',
-                'sl.voltage',
-                'sl.current',
-                'sl.ldr_status',
-                'sl.ultrasonic_status',
-                'sl.ina219_status',
-                'sl.trigger',
-                'sl.kondisi',
-                'sl.powerLampu',
-                'sl.timestamp',
-                'sl.created_at',            // selalu non-null, gunakan sebagai fallback timestamp
-                'dsc.is_faulty',
-                'dsc.updated_at as cache_updated_at'
-            )
-            ->orderBy('sl.device_id')
-            ->orderBy('sl.zone')
-            ->get();
+            $logs = DB::table('sensor_logs as sl')
+                ->leftJoin('device_status_cache as dsc', function ($join) {
+                    $join->on('sl.device_id', '=', 'dsc.device_id')
+                         ->on('sl.zone', '=', 'dsc.zone');
+                })
+                ->leftJoin('zones as z', function ($join) {
+                    $join->on('sl.device_id', '=', 'z.device_id')
+                         ->on('sl.zone', '=', 'z.zone_code');
+                })
+                ->whereIn('sl.id', $latestIds)
+                ->select(
+                    'sl.device_id',
+                    'sl.zone',
+                    'z.zone_name',
+                    'sl.lux',
+                    'sl.jarak',
+                    'sl.sedangAdaOrang',
+                    'sl.masihMasaTunggu',
+                    'sl.tombol',
+                    'sl.voltage',
+                    'sl.current',
+                    'sl.ldr_status',
+                    'sl.ultrasonic_status',
+                    'sl.ina219_status',
+                    'sl.trigger',
+                    'sl.kondisi',
+                    'sl.powerLampu',
+                    'sl.timestamp',
+                    'sl.created_at',
+                    'dsc.is_faulty',
+                    'dsc.updated_at as cache_updated_at'
+                )
+                ->orderBy('sl.device_id')
+                ->orderBy('sl.zone')
+                ->get();
 
-        $defaultLampCount = (int) (SystemSetting::where('key', 'lamps_per_zone')->value('value') ?? 2);
+            $defaultLampCount = (int) (Cache::remember('setting.lamps_per_zone', 3600, function () {
+                return SystemSetting::where('key', 'lamps_per_zone')->value('value') ?? 2;
+            }));
 
-        $formatted = $logs->map(function ($item) use ($defaultLampCount) {
-            // zone_name diambil dari tabel zones (dikirim oleh ESP32 dari konfigurasinya)
-            // Fallback: 'Zone {code}' jika ESP32 belum mengirim zone_name
-            $zoneName = $item->zone_name ?? ('Zone ' . $item->zone);
+            return $logs->map(function ($item) use ($defaultLampCount) {
+                $zoneName = $item->zone_name ?? ('Zone ' . $item->zone);
 
-            return [
-                'device_id' => $item->device_id,
-                'zone'      => $item->zone,
-                'zone_name' => $zoneName,
-                'lamp_count' => $defaultLampCount,
-                'latest_data' => [
-                    'lux' => round((float) $item->lux, 1),
-                    'jarak' => round((float) $item->jarak, 1),
-                    'sedangAdaOrang' => (bool) $item->sedangAdaOrang,
-                    'masihMasaTunggu' => (bool) $item->masihMasaTunggu,
-                    'tombol' => (bool) $item->tombol,
-                    'voltage' => (float) $item->voltage,
-                    'current' => (float) $item->current,
-                    'sensor_status' => [
-                        'ldr' => $item->ldr_status ?? 'OK',
-                        'ultrasonic' => $item->ultrasonic_status ?? 'OK',
-                        'ina219' => $item->ina219_status ?? 'N/A',  // Belum siap
+                return [
+                    'device_id' => $item->device_id,
+                    'zone'      => $item->zone,
+                    'zone_name' => $zoneName,
+                    'lamp_count' => $defaultLampCount,
+                    'latest_data' => [
+                        'lux' => round((float) $item->lux, 1),
+                        'jarak' => round((float) $item->jarak, 1),
+                        'sedangAdaOrang' => (bool) $item->sedangAdaOrang,
+                        'masihMasaTunggu' => (bool) $item->masihMasaTunggu,
+                        'tombol' => (bool) $item->tombol,
+                        'voltage' => (float) $item->voltage,
+                        'current' => (float) $item->current,
+                        'sensor_status' => [
+                            'ldr' => $item->ldr_status ?? 'OK',
+                            'ultrasonic' => $item->ultrasonic_status ?? 'OK',
+                            'ina219' => $item->ina219_status ?? 'N/A',
+                        ],
+                        'trigger' => $item->trigger,
+                        'kondisi' => $item->kondisi,
+                        'powerLampu' => (int) $item->powerLampu,
+                        'is_faulty' => (bool) $item->is_faulty,
+                        'is_online' => $item->created_at ? \Carbon\Carbon::parse($item->created_at)->diffInMinutes(now()) < 5 : false,
+                        'timestamp' => \Carbon\Carbon::parse($item->created_at)->toIso8601String(),
+                        'cache_updated_at' => $item->cache_updated_at ? \Carbon\Carbon::parse($item->cache_updated_at)->toIso8601String() : null,
                     ],
-                    'trigger' => $item->trigger,
-                    'kondisi' => $item->kondisi,
-                    'powerLampu' => (int) $item->powerLampu,
-                    'is_faulty' => (bool) $item->is_faulty,  // INA219 aktif — deteksi real
-                    // Kalkulasi online di backend agar tidak ada masalah selisih jam client-server
-                    'is_online' => $item->created_at ? \Carbon\Carbon::parse($item->created_at)->diffInMinutes(now()) < 5 : false,
-                    'timestamp' => \Carbon\Carbon::parse($item->created_at)->toIso8601String(),
-                    'cache_updated_at' => $item->cache_updated_at ? \Carbon\Carbon::parse($item->cache_updated_at)->toIso8601String() : null,
-                ],
-            ];
+                ];
+            })->toArray();
         });
 
-        return response()->json($formatted);
+        return response()->json($data);
     }
 }

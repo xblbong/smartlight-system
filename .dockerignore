@@ -1,0 +1,38 @@
+# Git
+.git
+.github
+
+# Environment files (will be mounted via .env.docker)
+.env
+.env.*
+!.env.docker
+
+# Node
+node_modules
+npm-debug.log*
+
+# Backend
+smart-light-backend/.git
+smart-light-backend/.env
+smart-light-backend/.env.*
+smart-light-backend/node_modules
+smart-light-backend/vendor
+smart-light-backend/storage/logs/*
+smart-light-backend/storage/framework/cache/*
+smart-light-backend/storage/framework/sessions/*
+smart-light-backend/storage/framework/views/*
+smart-light-backend/tests
+smart-light-backend/.phpunit.cache
+smart-light-backend/.editorconfig
+
+# Frontend
+smart-light-frontend/.git
+smart-light-frontend/.env
+smart-light-frontend/.env.*
+smart-light-frontend/node_modules
+smart-light-frontend/dist
+
+# Docker meta
+docker-compose*.yml
+README.md
+*.md

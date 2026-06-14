@@ -1,0 +1,16 @@
+// config.h.example — Template konfigurasi
+// Salin ke config.h dan isi sesuai kebutuhan: cp config.h.example config.h
+
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// ===== WIFI =====
+const char* WIFI_SSID     = "your-wifi-ssid";
+const char* WIFI_PASSWORD = "your-wifi-password";
+
+// ===== API =====
+const char* API_BASE_URL  = "http://your-server-ip/api";
+const char* API_KEY       = "your-api-key-from-env";
+const char* DEVICE_ID     = "ESP32-001";
+
+#endif

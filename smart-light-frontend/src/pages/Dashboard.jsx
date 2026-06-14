@@ -36,23 +36,33 @@ export default function Dashboard({ token, onUnauthorized }) {
   const [error, setError] = useState("");
   const [threshold, setThreshold] = useState(null);
 
-  const fetchData = useCallback(async () => {
+  // Fetch settings sekali saja saat mount (tidak perlu di-poll)
+  useEffect(() => {
+    if (!token) return;
+    const controller = new AbortController();
+    apiFetch("/settings", { token, signal: controller.signal })
+      .then(data => {
+        if (data?.lux_threshold) setThreshold(parseInt(data.lux_threshold));
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [token]);
+
+  // Polling data real-time (summary + devices)
+  const fetchData = useCallback(async (signal) => {
     try {
       setError("");
 
-      const [summaryData, deviceData, settingsData] = await Promise.all([
-        apiFetch("/api/dashboard/summary", { token }),
-        apiFetch("/api/device/latest", { token }),
-        apiFetch("/api/settings", { token }),
+      const [summaryData, deviceData] = await Promise.all([
+        apiFetch("/dashboard/summary", { token, signal }),
+        apiFetch("/device/latest", { token, signal }),
       ]);
 
       setSummary(summaryData);
       setDevices(Array.isArray(deviceData) ? deviceData : []);
-      if (settingsData?.ldr_sensitivity)
-        setThreshold(parseInt(settingsData.ldr_sensitivity));
       setLastUpdate(new Date());
     } catch (error) {
-      console.error("Dashboard fetch error:", error);
+      if (error.name === 'AbortError' || error.status === 408) return;
 
       if (error.status === 401) {
         onUnauthorized?.();
@@ -66,9 +76,13 @@ export default function Dashboard({ token, onUnauthorized }) {
   }, [token, onUnauthorized]);
 
   useEffect(() => {
-    fetchData();
-    const id = setInterval(fetchData, 5000);
-    return () => clearInterval(id);
+    const controller = new AbortController();
+    fetchData(controller.signal);
+    const id = setInterval(() => fetchData(controller.signal), 3000);
+    return () => {
+      clearInterval(id);
+      controller.abort();
+    };
   }, [fetchData]);
 
   if (loading && !summary) {
@@ -242,7 +256,7 @@ export default function Dashboard({ token, onUnauthorized }) {
       {/* ── Zone Cards Grid ── */}
       <div className="grid-cols-4">
         {devices.length === 0 ? (
-          <div className="card empty-state" style={{ gridColumn: "span 4" }}>
+          <div className="card empty-state" style={{ gridColumn: "1 / -1" }}>
             <Wifi size={48} color="var(--text-muted)" />
             <h3>Tidak ada device terdeteksi</h3>
             <p>Nyalakan ESP32 / Simulator untuk melihat data real-time.</p>

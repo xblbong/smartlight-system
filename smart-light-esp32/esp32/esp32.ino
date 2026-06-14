@@ -4,15 +4,13 @@
 #include <Wire.h>
 #include <Adafruit_INA219.h>
 #include <BH1750.h>
+#include "config.h"  // Konfigurasi sensitif (wifi, api key, url)
 
-// ===== CONFIG =====
-const char* ssid          = "KOS MUSLIMIN 2";
-const char* password      = "12341234";
-const char* apiDataUrl    = "https://api.munndev.my.id/api/device/data";
-const char* apiControlUrl = "https://api.munndev.my.id/api/device/control/pending?device_id=ESP32-001";
-const char* apiAckUrl     = "https://api.munndev.my.id/api/device/control/ack";
-const char* apiSettingsUrl = "https://api.munndev.my.id/api/settings";
-const char* deviceId      = "ESP32-001";
+// URL endpoints (derived from config.h)
+String apiDataUrl;
+String apiControlUrl;
+String apiAckUrl;
+String apiSettingsUrl;
 
 #define PIN_TRIG 11
 #define PIN_ECHO 12
@@ -92,12 +90,21 @@ void setup() {
   
   // Konek WiFi
   Serial.print("Connecting to WiFi ");
-  WiFi.begin(ssid, password);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) { 
     delay(500); 
     Serial.print("."); 
   }
   Serial.println("\n[OK] WiFi Connected!");
+
+  // Inisialisasi URL endpoints
+  apiDataUrl     = String(API_BASE_URL) + "/device/data";
+  apiControlUrl  = String(API_BASE_URL) + "/device/control/pending?device_id=" + DEVICE_ID;
+  apiAckUrl      = String(API_BASE_URL) + "/device/control/ack";
+  apiSettingsUrl = String(API_BASE_URL) + "/settings";
+
+  Serial.printf("[URL] Base: %s\n", API_BASE_URL);
+  Serial.printf("[URL] Data: %s\n", apiDataUrl.c_str());
 
   // Ambil settings dari server segera setelah terhubung WiFi
   fetchSettings();
@@ -123,10 +130,11 @@ void setLampuZone(int idx, int level) {
 
 void fetchSettings() {
   Serial.println("\n--- MENGAMBIL SETTING DARI SERVER ---");
-  Serial.printf("URL: %s\n", apiSettingsUrl);
-  
+  Serial.printf("URL: %s\n", apiSettingsUrl.c_str());
+
   HTTPClient http;
   http.begin(apiSettingsUrl);
+  http.addHeader("X-API-Key", API_KEY);
   http.setTimeout(3000);
   
   int code = http.GET();
@@ -181,8 +189,8 @@ void fetchSettings() {
 void loop() {
   if (WiFi.status() != WL_CONNECTED) return;
   
-  // 0. FETCH SETTINGS (Tiap 2 detik agar responsif)
-  if (millis() - lastSettingsFetch > 2000) {
+  // 0. FETCH SETTINGS (Tiap 30 detik — settings jarang berubah)
+  if (millis() - lastSettingsFetch > 30000) {
     lastSettingsFetch = millis();
     fetchSettings();
   }
@@ -262,11 +270,12 @@ void loop() {
     }
   }
   
-  // 3. AMBIL PERINTAH KONTROL DARI WEBSITE (Tiap 0,5 detik)
-  if (millis() - lastControl > 500) {
+  // 3. AMBIL PERINTAH KONTROL DARI WEBSITE (Tiap 2 detik)
+  if (millis() - lastControl > 2000) {
     lastControl = millis();
     HTTPClient http;
     http.begin(apiControlUrl);
+    http.addHeader("X-API-Key", API_KEY);
     http.setTimeout(3000);
     
     int code = http.GET();
@@ -309,6 +318,7 @@ void loop() {
           HTTPClient httpAck;
           httpAck.begin(apiAckUrl);
           httpAck.addHeader("Content-Type", "application/json");
+          httpAck.addHeader("X-API-Key", API_KEY);
           httpAck.POST("{\"ids\":[" + String(id) + "]}");
           httpAck.end();
         }
@@ -325,7 +335,7 @@ void loop() {
     int i = currentZoneToSend;
     DynamicJsonDocument doc(512);
     
-    doc["device_id"] = deviceId;
+    doc["device_id"] = DEVICE_ID;
     doc["zone"] = lampu[i].zone;
     doc["lux"] = currentLux;
     doc["jarak"] = currentJarak;
@@ -368,6 +378,7 @@ void loop() {
     HTTPClient http;
     http.begin(apiDataUrl);
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("X-API-Key", API_KEY);
     int res = http.POST(payload);
     
     Serial.printf("[Monitor] Zone %s | Sync: HTTP %d\n", lampu[i].zone.c_str(), res);

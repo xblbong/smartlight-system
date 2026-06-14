@@ -99,6 +99,19 @@ return [
 
     'key' => env('APP_KEY'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Device API Key
+    |--------------------------------------------------------------------------
+    |
+    | API key untuk autentikasi ESP32/IoT device.
+    | Set di .env: DEVICE_API_KEY=your-secret-key
+    | Jika kosong, validasi di-skip (development mode).
+    |
+    */
+
+    'device_api_key' => env('DEVICE_API_KEY'),
+
     'previous_keys' => [
         ...array_filter(
             explode(',', (string) env('APP_PREVIOUS_KEYS', ''))

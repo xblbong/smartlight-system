@@ -106,7 +106,7 @@ export default function Login({ onLoginSuccess, initialError = '' }) {
     setLoading(true)
 
     try {
-      const data = await apiFetch('/api/login', {
+      const data = await apiFetch('/login', {
         method: 'POST',
         body: { email: email.trim(), password },
       })
