@@ -9,106 +9,105 @@ use App\Models\Device;
 use App\Models\DeviceControl;
 use App\Models\SystemSetting;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class DashboardController extends Controller
 {
     /**
      * GET /api/dashboard/summary
+     * Cached 5 detik — cukup untuk real-time dashboard tanpa membebani DB
      */
     public function summary()
     {
-        $espCount       = Device::count();  // Jumlah ESP32 fisik
-        $cache          = DB::table('device_status_cache')->get();
-        $active_devices = $cache->count();
-        // INA219 belum siap → faulty selalu 0 sampai sensor terpasang
-        $faulty_devices = 0;
-        $avg_lux        = round((float) ($cache->avg('last_lux') ?? 0), 1);
-        $total_zones    = $cache->count();   // Jumlah zona aktif (= jumlah titik lampu)
-        $faulty_devices = $cache->where('is_faulty', true)->count();
-        $avg_lux        = round($cache->avg('last_lux') ?? 0, 1);
-        $lampu_menyala  = $cache->where('last_power', '>', 0)->count();
-        $lampu_mati     = $cache->where('last_power', 0)->count();
+        $data = Cache::remember('api.summary', 2, function () {
+            $espCount = Device::count();
 
-        // avg_current dari sensor_logs terbaru
-        $latestIds = DB::table('sensor_logs')
-            ->select(DB::raw('MAX(id) as id'))
-            ->groupBy('device_id', 'zone')
-            ->pluck('id');
+            // Aggregasi di SQL, bukan di PHP
+            $agg = DB::table('device_status_cache')
+                ->selectRaw('
+                    COUNT(*) as total_zones,
+                    SUM(CASE WHEN is_faulty = 1 THEN 1 ELSE 0 END) as faulty_devices,
+                    SUM(CASE WHEN last_power > 0 THEN 1 ELSE 0 END) as lampu_menyala,
+                    SUM(CASE WHEN last_power = 0 OR last_power IS NULL THEN 1 ELSE 0 END) as lampu_mati,
+                    ROUND(AVG(last_lux), 1) as avg_lux
+                ')
+                ->first();
 
-        $avg_current = 0;
-        if ($latestIds->isNotEmpty()) {
-            $avg_current = round(
-                DB::table('sensor_logs')->whereIn('id', $latestIds)->avg('current') ?? 0,
+            // avg_current dari cache (sudah update per ESP32 heartbeat)
+            $avgCurrent = round(
+                (float) DB::table('device_status_cache')->avg('last_current'),
                 1
             );
-        }
 
-        return response()->json([
-            'total_devices'  => $espCount,     // Jumlah ESP32 unit
-            'total_zones'    => $total_zones,  // Jumlah zona (titik lampu)
-            'active_devices' => $total_zones,  // Alias agar frontend backward-compatible
-            'faulty_devices' => $faulty_devices,
-            'avg_lux'        => $avg_lux,
-            'avg_current'    => $avg_current,
-            'lampu_menyala'  => $lampu_menyala,
-            'lampu_mati'     => $lampu_mati,
-        ]);
+            return [
+                'total_devices'  => $espCount,
+                'total_zones'    => (int) ($agg->total_zones ?? 0),
+                'active_devices' => (int) ($agg->total_zones ?? 0),
+                'faulty_devices' => (int) ($agg->faulty_devices ?? 0),
+                'avg_lux'        => (float) ($agg->avg_lux ?? 0),
+                'avg_current'    => $avgCurrent,
+                'lampu_menyala'  => (int) ($agg->lampu_menyala ?? 0),
+                'lampu_mati'     => (int) ($agg->lampu_mati ?? 0),
+            ];
+        });
+
+        return response()->json($data);
     }
 
     /**
      * GET /api/device/zones
-     * Mengembalikan daftar zona yang dikenal sistem (dari data yang pernah masuk dari ESP32).
-     * zone_name: nama lokasi fisik dari konfigurasi ESP32 (via tabel zones).
-     * lamp_count: jumlah lampu per zona (default 2, bisa dikustomisasi via SystemSetting).
+     * Cached 10 detik — zone config jarang berubah
      */
     public function zones()
     {
-        // Ambil semua zona dari tabel zones (diisi saat ESP32 POST /api/device/data)
-        $zones = DB::table('zones as z')
-            ->leftJoin('device_status_cache as dsc', function ($join) {
-                $join->on('z.device_id', '=', 'dsc.device_id')
-                     ->on('z.zone_code', '=', 'dsc.zone');
-            })
-            ->select(
-                'z.device_id',
-                'z.zone_code',
-                'z.zone_name',
-                'dsc.last_power',
-                'dsc.last_lux',
-                'dsc.last_kondisi',
-                'dsc.last_voltage',
-                'dsc.last_current',
-                'dsc.is_faulty',
-                'dsc.updated_at'
-            )
-            ->orderBy('z.device_id')
-            ->orderBy('z.zone_code')
-            ->get();
+        $data = Cache::remember('api.zones', 10, function () {
+            $zones = DB::table('zones as z')
+                ->leftJoin('device_status_cache as dsc', function ($join) {
+                    $join->on('z.device_id', '=', 'dsc.device_id')
+                         ->on('z.zone_code', '=', 'dsc.zone');
+                })
+                ->select(
+                    'z.device_id',
+                    'z.zone_code',
+                    'z.zone_name',
+                    'dsc.last_power',
+                    'dsc.last_lux',
+                    'dsc.last_kondisi',
+                    'dsc.last_voltage',
+                    'dsc.last_current',
+                    'dsc.is_faulty',
+                    'dsc.updated_at'
+                )
+                ->orderBy('z.device_id')
+                ->orderBy('z.zone_code')
+                ->get();
 
-        // Ambil lamp_count default dari SystemSetting (fallback: 2)
-        $defaultLampCount = (int) (SystemSetting::where('key', 'lamps_per_zone')->value('value') ?? 2);
+            $defaultLampCount = (int) (Cache::remember('setting.lamps_per_zone', 3600, function () {
+                return SystemSetting::where('key', 'lamps_per_zone')->value('value') ?? 2;
+            }));
 
-        $result = $zones->map(function ($z) use ($defaultLampCount) {
-            return [
-                'device_id'    => $z->device_id,
-                'zone_code'    => $z->zone_code,
-                'zone_name'    => $z->zone_name ?? ('Zone ' . $z->zone_code),
-                'lamp_count'   => $defaultLampCount,
-                'last_power'   => (int) ($z->last_power ?? 0),
-                'last_lux'     => round((float) ($z->last_lux ?? 0), 1),
-                'last_voltage' => round((float) ($z->last_voltage ?? 0), 2),
-                'last_current' => round((float) ($z->last_current ?? 0), 1),
-                'is_active'    => $z->updated_at !== null,
-                'is_faulty'    => (bool) ($z->is_faulty ?? false),
-            ];
+            return $zones->map(function ($z) use ($defaultLampCount) {
+                return [
+                    'device_id'    => $z->device_id,
+                    'zone_code'    => $z->zone_code,
+                    'zone_name'    => $z->zone_name ?? ('Zone ' . $z->zone_code),
+                    'lamp_count'   => $defaultLampCount,
+                    'last_power'   => (int) ($z->last_power ?? 0),
+                    'last_lux'     => round((float) ($z->last_lux ?? 0), 1),
+                    'last_voltage' => round((float) ($z->last_voltage ?? 0), 2),
+                    'last_current' => round((float) ($z->last_current ?? 0), 1),
+                    'is_active'    => $z->updated_at !== null,
+                    'is_faulty'    => (bool) ($z->is_faulty ?? false),
+                ];
+            })->toArray();
         });
 
-        return response()->json($result);
+        return response()->json($data);
     }
 
     /**
      * GET /api/device/history
-     * Optional query params: device_id, zone, limit (default 100)
+     * Tidak di-cache karena data historis berubah per request
      */
     public function history(Request $request)
     {
@@ -122,9 +121,8 @@ class DashboardController extends Controller
             $query->where('zone', $request->zone);
         }
 
-        // Filter bulan: format YYYY-MM
         if ($request->filled('month')) {
-            $month = $request->month; // e.g. "2026-05"
+            $month = $request->month;
             $parts = explode('-', $month);
             if (count($parts) === 2) {
                 $query->whereYear('created_at', $parts[0])
@@ -140,98 +138,94 @@ class DashboardController extends Controller
 
     /**
      * GET /api/analytics/efficiency
-     * Menghitung perbandingan efisiensi: sistem konvensional (timer) vs smart lighting.
-     * PROTOTYPE: 1 watt per lampu LED
-     * Baseline konvensional berdasarkan wawancara satpam UB:
-     *   - 17:00-23:00 (6 jam): SEMUA lampu nyala 100%
-     *   - 23:00-04:00 (5 jam): ~40% lampu nyala 100%
-     *   - 04:00-17:00 (13 jam): MATI
-     *   - Total per lampu: ~8 jam/hari equivalent
+     * Cached 30 detik — data efisiensi tidak perlu real-time
      */
     public function efficiency(Request $request)
     {
-        $cache = DB::table('device_status_cache')->get();
-        $totalZones = $cache->count();
-        if ($totalZones === 0) $totalZones = 1;
+        $monthKey = $request->get('month', 'latest');
+        $cacheKey = "api.efficiency.{$monthKey}";
 
-        // PROTOTYPE: 1 watt per lampu LED
-        $wattsPerLamp = 1;
-        $lampsPerZone = 2;  // 2 lampu per zona
+        $data = Cache::remember($cacheKey, 30, function () use ($request) {
+            $totalZones = DB::table('device_status_cache')->count();
+            if ($totalZones === 0) $totalZones = 1;
 
-        // ── Baseline Konvensional (per hari) ──
-        // 17:00-23:00: 6 jam × semua zona × 100%
-        // 23:00-04:00: 5 jam × 40% zona × 100%
-        $convHoursFullAll   = 6;   // 6 jam semua nyala
-        $convHoursPartial   = 5;   // 5 jam sebagian nyala
-        $convPartialRatio   = 0.4; // 40% zona tetap nyala malam
-        $convDailyWh = ($totalZones * $convHoursFullAll * $wattsPerLamp * $lampsPerZone)
-                     + ($totalZones * $convPartialRatio * $convHoursPartial * $wattsPerLamp * $lampsPerZone);
-        $convDailyKwh = round($convDailyWh / 1000, 3);  // 3 desimal untuk prototype
-        $convMonthlyKwh = round($convDailyKwh * 30, 3);
+            // Asumsi prototype: 1W per lampu, 2 lampu per zona
+            $wattsPerLamp = 1;
+            $lampsPerZone = 2;
+            $totalLamps = $totalZones * $lampsPerZone;
 
-        // ── Smart System (dari data aktual) ──
-        // Hitung dari data sensor: rata-rata duty cycle × jam operasi realistis
-        // Jam operasi: 17:00-06:00 = 13 jam (malam-subuh, saat lampu diperlukan)
-        $smartOperatingHours = 13; // jam realistis per hari lampu beroperasi
+            // ── Konvensional (timer-based) ──
+            // 17:00-23:00 (6 jam): SEMUA lampu 100%
+            // 23:00-04:00 (5 jam): 40% lampu tetap 100%
+            // 04:00-17:00 (13 jam): MATI
+            $convHoursOn = 6 + (5 * 0.4); // = 8 jam equivalent per hari
+            $convPowerPerHour = $totalLamps * $wattsPerLamp; // Watt jika semua nyala
+            $convDailyWh = $convPowerPerHour * $convHoursOn;
+            $convDailyKwh = round($convDailyWh / 1000, 3);
+            $convMonthlyKwh = round($convDailyKwh * 30, 3);
 
-        $query = DB::table('sensor_logs')
-            ->where('created_at', '>=', now()->subDay());
+            // ── Smart System ──
+            // Hitung dari data sensor aktual
+            $query = DB::table('sensor_logs')
+                ->where('created_at', '>=', now()->subDay());
 
-        if ($request->filled('month')) {
-            $month = $request->month;
-            $parts = explode('-', $month);
-            if (count($parts) === 2) {
-                $query = DB::table('sensor_logs')
-                    ->whereYear('created_at', $parts[0])
-                    ->whereMonth('created_at', $parts[1]);
+            if ($request->filled('month')) {
+                $month = $request->month;
+                $parts = explode('-', $month);
+                if (count($parts) === 2) {
+                    $query = DB::table('sensor_logs')
+                        ->whereYear('created_at', $parts[0])
+                        ->whereMonth('created_at', $parts[1]);
+                }
             }
-        }
 
-        $logs = $query->get();
-        $totalLogs = $logs->count();
+            // Rata-rata PWM dari data sensor (0-255)
+            $avgPwm = (float) ($query->avg('powerLampu') ?? 0);
+            $totalLogs = (int) ($query->count() ?? 0);
 
-        if ($totalLogs > 0) {
-            $avgPwm = $logs->avg('powerLampu');
-            // PWM 0-255 → duty cycle 0-100%
-            $avgDuty = $avgPwm / 255;
-            // Smart system: duty cycle × jam operasi malam
-            // Lebih akurat karena smart lighting hanya aktif saat gelap
-            $smartHoursPerDay = round($avgDuty * $smartOperatingHours, 3);
-            $smartDailyWh = $totalZones * $smartHoursPerDay * $wattsPerLamp * $lampsPerZone;
-            $smartDailyKwh = round($smartDailyWh / 1000, 3);  // 3 desimal untuk prototype
-        } else {
-            $smartHoursPerDay = 0;
-            $smartDailyKwh = 0;
-            $avgPwm = 0;
-        }
+            // Hitung berapa persen lampu aktif dan pada level berapa
+            $avgDuty = $avgPwm / 255; // 0.0 - 1.0
 
-        $smartMonthlyKwh = round($smartDailyKwh * 30, 3);
-        // Clamp: minimal 0% (data simulator mungkin tidak sempurna)
-        $savingPct = $convMonthlyKwh > 0
-            ? max(0, round((($convMonthlyKwh - $smartMonthlyKwh) / $convMonthlyKwh) * 100, 1))
-            : 0;
+            // Jam operasi smart system = jam gelap (17:00-06:00 = 13 jam)
+            // Tapi lampu HANYA nyala saat gelap + ada kebutuhan
+            $darkHours = 13; // jam gelap per hari
+            $smartEffectiveHours = $avgDuty * $darkHours; // jam lampu benar-benar aktif
 
-        return response()->json([
-            'total_zones'       => $totalZones,
-            'lamps_per_zone'    => $lampsPerZone,
-            'watts_per_lamp'    => $wattsPerLamp,
-            'is_prototype'      => true,  // Flag untuk frontend
-            'conventional'      => [
-                'daily_kwh'     => $convDailyKwh,
-                'monthly_kwh'   => $convMonthlyKwh,
-                'hours_per_day' => $convHoursFullAll + ($convPartialRatio * $convHoursPartial),
-                'description'   => 'Timer: 17:00-23:00 semua nyala, 23:00-04:00 sebagian nyala',
-            ],
-            'smart'             => [
-                'daily_kwh'     => $smartDailyKwh,
-                'monthly_kwh'   => $smartMonthlyKwh,
-                'avg_pwm'       => round($avgPwm, 1),
-                'avg_duty_pct'  => round(($avgPwm / 255) * 100, 1),
-                'hours_per_day' => $smartHoursPerDay,
-            ],
-            'saving_pct'        => $savingPct,
-            'data_points'       => $totalLogs,
-        ]);
+            // Daya rata-rata = duty cycle * max power
+            $smartAvgPower = $totalLamps * $wattsPerLamp * $avgDuty;
+            $smartDailyWh = $smartAvgPower * $smartEffectiveHours;
+            $smartDailyKwh = round($smartDailyWh / 1000, 3);
+            $smartMonthlyKwh = round($smartDailyKwh * 30, 3);
+
+            // Persentase penghematan
+            $savingPct = $convMonthlyKwh > 0
+                ? max(0, round((($convMonthlyKwh - $smartMonthlyKwh) / $convMonthlyKwh) * 100, 1))
+                : 0;
+
+            return [
+                'total_zones'       => $totalZones,
+                'lamps_per_zone'    => $lampsPerZone,
+                'watts_per_lamp'    => $wattsPerLamp,
+                'is_prototype'      => true,
+                'conventional'      => [
+                    'daily_kwh'     => $convDailyKwh,
+                    'monthly_kwh'   => $convMonthlyKwh,
+                    'hours_per_day' => round($convHoursOn, 1),
+                    'description'   => 'Timer: 17:00-23:00 semua nyala, 23:00-04:00 40% nyala',
+                ],
+                'smart'             => [
+                    'daily_kwh'     => $smartDailyKwh,
+                    'monthly_kwh'   => $smartMonthlyKwh,
+                    'avg_pwm'       => round($avgPwm, 1),
+                    'avg_duty_pct'  => round($avgDuty * 100, 1),
+                    'hours_per_day' => round($smartEffectiveHours, 1),
+                ],
+                'saving_pct'        => $savingPct,
+                'data_points'       => $totalLogs,
+            ];
+        });
+
+        return response()->json($data);
     }
 
     /**
@@ -252,6 +246,10 @@ class DashboardController extends Controller
             'executed_at' => null,
         ]);
 
+        // Invalidate cache setelah control command
+        Cache::forget('api.summary');
+        Cache::forget('api.latest');
+
         return response()->json([
             'status'  => 'success',
             'message' => 'Command queued for execution',
@@ -261,7 +259,6 @@ class DashboardController extends Controller
 
     /**
      * GET /api/device/control/pending
-     * Digunakan oleh simulator/ESP32 untuk mengambil perintah kontrol yang belum dieksekusi.
      */
     public function pendingControl(Request $request)
     {
@@ -269,12 +266,12 @@ class DashboardController extends Controller
             'device_id' => 'required|string',
         ]);
 
-        // Ambil perintah terbaru per zona yang belum dieksekusi
+        // Window function: ambil perintah terbaru per zona yang belum dieksekusi
         $commands = DeviceControl::where('device_id', $request->device_id)
             ->whereNull('executed_at')
             ->orderBy('created_at', 'desc')
             ->get()
-            ->unique('zone')  // hanya perintah terbaru per zona
+            ->unique('zone')
             ->values();
 
         return response()->json($commands);
@@ -282,7 +279,6 @@ class DashboardController extends Controller
 
     /**
      * POST /api/device/control/ack
-     * Simulator/ESP32 mengonfirmasi bahwa perintah sudah dieksekusi.
      */
     public function ackControl(Request $request)
     {
@@ -300,10 +296,14 @@ class DashboardController extends Controller
 
     /**
      * GET /api/settings
+     * Cached 1 jam — settings jarang berubah
      */
     public function getSettings()
     {
-        $settings = SystemSetting::all()->pluck('value', 'key');
+        $settings = Cache::remember('api.settings', 3600, function () {
+            return SystemSetting::all()->pluck('value', 'key')->toArray();
+        });
+
         return response()->json($settings);
     }
 
@@ -312,9 +312,15 @@ class DashboardController extends Controller
      */
     public function saveSettings(Request $request)
     {
-        foreach ($request->all() as $key => $value) {
+        $allowed = ['lux_threshold', 'pir_delay', 'lamps_per_zone'];
+
+        foreach ($request->only($allowed) as $key => $value) {
             SystemSetting::updateOrCreate(['key' => $key], ['value' => $value]);
         }
+
+        // Invalidate settings cache
+        Cache::forget('api.settings');
+        Cache::forget('setting.lamps_per_zone');
 
         return response()->json(['status' => 'success']);
     }
