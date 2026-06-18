@@ -176,6 +176,7 @@ body {
   margin-left: var(--sidebar-width);
   padding: 36px 40px;
   min-height: 100vh;
+  overflow-x: auto;
 }
 
 /* ── Page Header ── */
@@ -219,9 +220,9 @@ body {
 }
 
 /* ── Grids ── */
-.grid-cols-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-.grid-cols-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-.grid-cols-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.grid-cols-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; overflow-x: auto; }
+.grid-cols-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; overflow-x: auto; }
+.grid-cols-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; overflow-x: auto; }
 
 /* ── Summary Strip ── */
 .summary-strip {
@@ -289,8 +290,8 @@ body {
 .kondisi-chip { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px; }
 .trigger-chip { font-size: 10px; font-weight: 600; color: var(--text-secondary); background: #f3f4f6; padding: 3px 8px; border-radius: 6px; }
 
-.zc-metrics { display: flex; gap: 8px; }
-.zc-metric-box { flex: 1; background: #f9fafb; padding: 10px; border-radius: 8px; border: 1px solid #f3f4f6; }
+.zc-metrics { display: flex; gap: 8px; flex-wrap: wrap; }
+.zc-metric-box { flex: 1; min-width: 80px; background: #f9fafb; padding: 10px; border-radius: 8px; border: 1px solid #f3f4f6; }
 .zc-metric-label { font-size: 9px; color: var(--text-secondary); font-weight: 700; margin-bottom: 3px; letter-spacing: 0.3px; }
 .zc-metric-val { font-size: 13px; font-weight: 700; }
 .zc-metric-val.faulty { color: var(--accent-red); }
@@ -490,11 +491,14 @@ select.form-input { cursor: pointer; }
   .main-content {
     margin-left: 0;
     padding: 20px;
-    overflow-x: hidden;
+    overflow-x: auto;
     max-width: 100vw;
   }
 
-  .grid-cols-2, .grid-cols-3, .grid-cols-4 { grid-template-columns: 1fr; }
+  .grid-cols-2, .grid-cols-3, .grid-cols-4 {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    overflow-x: auto;
+  }
 
   .page-header { flex-direction: column; align-items: flex-start; }
   .header-actions { width: 100%; justify-content: flex-start; }
