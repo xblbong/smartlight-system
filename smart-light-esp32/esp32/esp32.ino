@@ -4,21 +4,15 @@
 #include <Wire.h>
 #include <Adafruit_INA219.h>
 #include <BH1750.h>
-#include "config.h"
 
-// ═══════════════════════════════════════════════
-// DEBUG — Set ke false untuk production (hemat Serial)
-// ═══════════════════════════════════════════════
-#define DEBUG true
-#define DEBUG_SENSOR false    // Log sensor setiap 500ms (verbose)
-#define DEBUG_LAMPU true      // Log perubahan PWM
-#define DEBUG_NETWORK true    // Log HTTP request/response
-#define DEBUG_INTERVAL 1000   // Interval log sensor (ms)
-
-String apiDataUrl;
-String apiControlUrl;
-String apiAckUrl;
-String apiSettingsUrl;
+// ===== CONFIG =====
+const char* ssid          = "KOS MUSLIMIN 2";
+const char* password      = "12341234";
+const char* apiDataUrl    = "https://api.munndev.my.id/api/device/data";
+const char* apiControlUrl = "https://api.munndev.my.id/api/device/control/pending?device_id=ESP32-001";
+const char* apiAckUrl     = "https://api.munndev.my.id/api/device/control/ack";
+const char* apiSettingsUrl = "https://api.munndev.my.id/api/settings";
+const char* deviceId      = "ESP32-001";
 
 #define PIN_TRIG 11
 #define PIN_ECHO 12
@@ -158,40 +152,17 @@ void setup() {
   } else {
     Serial.println("[FAIL] BH1750 not found — Lux monitoring disabled");
   }
-
-  // ── WiFi ──
-  Serial.println("\n[WIFI] Connecting...");
-  Serial.printf("  SSID: %s\n", WIFI_SSID);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  int wifiAttempts = 0;
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-    wifiAttempts++;
-    if (wifiAttempts > 40) {  // 20 detik timeout
-      Serial.println("\n[ERROR] WiFi connection timeout! Restarting...");
-      ESP.restart();
-    }
+  
+  // Konek WiFi
+  Serial.print("Connecting to WiFi ");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) { 
+    delay(500); 
+    Serial.print("."); 
   }
-  Serial.println();
-  Serial.println("[OK] WiFi Connected!");
-  Serial.printf("  IP Address: %s\n", WiFi.localIP().toString().c_str());
-  Serial.printf("  RSSI: %d dBm\n", WiFi.RSSI());
+  Serial.println("\n[OK] WiFi Connected!");
 
-  // ── API URLs ──
-  Serial.println("\n[API] Endpoint Configuration:");
-  apiDataUrl     = String(API_BASE_URL) + "/device/data";
-  apiControlUrl  = String(API_BASE_URL) + "/device/control/pending?device_id=" + DEVICE_ID;
-  apiAckUrl      = String(API_BASE_URL) + "/device/control/ack";
-  apiSettingsUrl = String(API_BASE_URL) + "/settings";
-  Serial.printf("  Base URL: %s\n", API_BASE_URL);
-  Serial.printf("  Device ID: %s\n", DEVICE_ID);
-  Serial.printf("  Data: %s\n", apiDataUrl.c_str());
-  Serial.printf("  Control: %s\n", apiControlUrl.c_str());
-  Serial.printf("  Settings: %s\n", apiSettingsUrl.c_str());
-
-  // ── Fetch Initial Settings ──
-  Serial.println("\n[INIT] Fetching settings from server...");
+  // Ambil settings dari server segera setelah terhubung WiFi
   fetchSettings();
 
   Serial.println();
@@ -260,19 +231,13 @@ void setPWM(int idx, int level) {
 // NETWORK — Settings
 // ═══════════════════════════════════════════════
 void fetchSettings() {
-  if (WiFi.status() != WL_CONNECTED) {
-    if (DEBUG && DEBUG_NETWORK) Serial.println("[NET] Settings skipped — WiFi disconnected");
-    return;
-  }
-
-  if (DEBUG && DEBUG_NETWORK) Serial.println("[NET] Fetching settings...");
-
+  Serial.println("\n--- MENGAMBIL SETTING DARI SERVER ---");
+  Serial.printf("URL: %s\n", apiSettingsUrl);
+  
   HTTPClient http;
   http.begin(apiSettingsUrl);
-  http.addHeader("X-API-Key", API_KEY);
-  http.setTimeout(1500);
-
-  unsigned long t0 = millis();
+  http.setTimeout(3000);
+  
   int code = http.GET();
   unsigned long dt = millis() - t0;
 
@@ -315,276 +280,201 @@ void fetchSettings() {
 // ═══════════════════════════════════════════════
 void fetchControl() {
   if (WiFi.status() != WL_CONNECTED) return;
-
-  HTTPClient http;
-  http.begin(apiControlUrl);
-  http.addHeader("X-API-Key", API_KEY);
-  http.setTimeout(1000);
-
-  unsigned long t0 = millis();
-  int code = http.GET();
-  unsigned long dt = millis() - t0;
-
-  if (DEBUG && DEBUG_NETWORK) {
-    Serial.printf("[NET] Control poll: HTTP %d (%lums)\n", code, dt);
+  
+  // 0. FETCH SETTINGS (Tiap 2 detik agar responsif)
+  if (millis() - lastSettingsFetch > 2000) {
+    lastSettingsFetch = millis();
+    fetchSettings();
   }
-
-  if (code == 200) {
-    String response = http.getString();
-    DynamicJsonDocument doc(2048);
-    if (!deserializeJson(doc, response)) {
-      JsonArray arr = doc.as<JsonArray>();
-
-      if (arr.size() > 0) {
-        Serial.printf("[CMD] Received %d command(s)!\n", arr.size());
-      }
-
-      for (JsonObject cmd : arr) {
-        String zone = cmd["zone"].as<String>();
-        String action = cmd["action"].as<String>();
-        int id = cmd["id"].as<int>();
-
-        Serial.printf("[CMD] → Zone %s: %s (id=%d)\n", zone.c_str(), action.c_str(), id);
-
-        for (int i = 0; i < 4; i++) {
-          if (lampu[i].zone == zone) {
-            if (action == "ON" || action == "EMERGENCY") {
-              lampu[i].manualMode = true;
-              setPWM(i, 255);
-              lampu[i].trigger = "REMOTE ON";
-              lampu[i].kondisi = "NYALA MANUAL";
-              Serial.printf("[CMD] Zone %s: PWM 255 (MANUAL ON)\n", zone.c_str());
-            } else if (action == "OFF") {
-              lampu[i].manualMode = true;
-              setPWM(i, 0);
-              lampu[i].trigger = "REMOTE OFF";
-              lampu[i].kondisi = "MATI MANUAL";
-              Serial.printf("[CMD] Zone %s: PWM 0 (MANUAL OFF)\n", zone.c_str());
-            } else if (action == "AUTO") {
-              lampu[i].manualMode = false;
-              Serial.printf("[CMD] Zone %s: AUTO mode restored\n", zone.c_str());
-            }
-          }
+  
+  // 1. BACA SENSOR FISIK
+  if (bhReady) {
+    currentLux = lightMeter.readLightLevel();
+    if (currentLux < 0) currentLux = 0;
+  }
+  currentJarak = bacaJarak();
+  if (inaReady) {
+    currentV = ina219.getBusVoltage_V();
+    currentmA = ina219.getCurrent_mA();
+    if (currentV < 0.1) currentV = 0;
+    if (currentmA < 0) currentmA = 0;
+  }
+  
+  bool adaOrang = (currentJarak < 3 );  // Threshold jarak 3 cm
+  bool tombolDitekan = (digitalRead(PIN_SWITCH) == LOW);
+  
+  // // Debug switch setiap 5 detik
+  // static unsigned long lastSwitchLog = 0;
+  // if (millis() - lastSwitchLog > 5000) {
+  //   lastSwitchLog = millis();
+  //   Serial.printf("[SWITCH] Pin 19 = %d (LOW=ditekan, HIGH=lepas)\n", digitalRead(PIN_SWITCH));
+  // }
+  
+  // // Log saat switch state berubah
+  // static bool lastSwitchState = false;
+  // if (tombolDitekan != lastSwitchState) {
+  //   lastSwitchState = tombolDitekan;
+  //   Serial.printf("[SWITCH] State changed: %s\n", tombolDitekan ? "DITEKAN (PWM 255)" : "LEPAS (AUTO)");
+  // }
+  
+  // 2. LOGIKA LAMPU (AUTO / MANUAL / TOMBOL) & TERAPKAN KE MOSFET
+  for (int i = 0; i < 4; i++) {
+    if (tombolDitekan) {
+      // Prioritas 1: Tombol Fisik (Nyalakan Semua 100%)
+      lampu[i].pwmLevel = 255;
+      lampu[i].isON = true;
+      lampu[i].trigger = "SWITCH ON";
+      lampu[i].kondisi = "NYALA PENUH";
+      lampu[i].manualMode = false;
+      setLampuZone(i, lampu[i].pwmLevel);
+    } else if (lampu[i].manualMode) {
+      // Prioritas 2: Kontrol Website (ON/OFF)
+      setLampuZone(i, lampu[i].pwmLevel);
+    } else {
+      // Prioritas 3: Auto Sensor (gunakan threshold dari server)
+      if (currentLux < luxThreshold) {
+        // Update waktu terakhir ada gerakan
+        if (adaOrang) {
+          lastGerakanTime[i] = millis();
         }
-
-        // ACK
-        HTTPClient ack;
-        ack.begin(apiAckUrl);
-        ack.addHeader("Content-Type", "application/json");
-        ack.addHeader("X-API-Key", API_KEY);
-        ack.setTimeout(500);
-        int ackCode = ack.POST("{\"ids\":[" + String(id) + "]}");
-        if (DEBUG && DEBUG_NETWORK) {
-          Serial.printf("[CMD] ACK id=%d: HTTP %d\n", id, ackCode);
+        
+        // Cek apakah masih dalam masa tunggu setelah gerakan terakhir
+        unsigned long timeSinceLastGerakan = (millis() - lastGerakanTime[i]) / 1000;  // dalam detik
+        bool masihMasaTunggu = (timeSinceLastGerakan < delayUltrasonik);
+        
+        if (adaOrang || masihMasaTunggu) {
+          lampu[i].pwmLevel = 255; 
+          lampu[i].trigger = adaOrang ? "AUTO 100%" : "AUTO 100% (TUNGGU)";
+          lampu[i].kondisi = "NYALA PENUH";
+        } else {
+          lampu[i].pwmLevel = 20; 
+          lampu[i].trigger = "AUTO 20";
+          lampu[i].kondisi = "NYALA REDUP";
         }
-        ack.end();
+        lampu[i].isON = true;
+      } else {
+        lampu[i].pwmLevel = 0;
+        lampu[i].isON = false;
+        lampu[i].trigger = "OFF (TERANG)";
+        lampu[i].kondisi = "MATI";
       }
+      setLampuZone(i, lampu[i].pwmLevel);
     }
   }
-  http.end();
-}
-
-// ═══════════════════════════════════════════════
-// NETWORK — Send Sensor Data
-// ═══════════════════════════════════════════════
-void sendData() {
-  if (WiFi.status() != WL_CONNECTED) return;
-  static int zone = 0;
-  bool adaOrang = (currentJarak < 3);
-
-  DynamicJsonDocument doc(512);
-  doc["device_id"] = DEVICE_ID;
-  doc["zone"] = lampu[zone].zone;
-  doc["lux"] = currentLux;
-  doc["jarak"] = currentJarak;
-  doc["voltage"] = currentV;
-  doc["current"] = lampu[zone].isON ? (currentmA / 4.0) : 0;
-  doc["sedangAdaOrang"] = adaOrang;
-  doc["tombol"] = tombolDitekan;
-
-  bool masaTunggu = false;
-  if (currentLux < luxThreshold) {
-    unsigned long dt = (now - lastGerakanTime[zone]) / 1000;
-    masaTunggu = (dt < delayUltrasonik) && !adaOrang;
+  
+  // 3. AMBIL PERINTAH KONTROL DARI WEBSITE (Tiap 0,5 detik)
+  if (millis() - lastControl > 500) {
+    lastControl = millis();
+    HTTPClient http;
+    http.begin(apiControlUrl);
+    http.setTimeout(3000);
+    
+    int code = http.GET();
+    if (code == 200) {
+      DynamicJsonDocument doc(2048);
+      DeserializationError err = deserializeJson(doc, http.getString());
+      
+      if (!err && doc.is<JsonArray>()) {
+        JsonArray arr = doc.as<JsonArray>();
+        for (JsonObject cmd : arr) {
+          String zoneCmd = cmd["zone"].as<String>();
+          String action = cmd["action"].as<String>();
+          int id = cmd["id"].as<int>();
+          
+          for (int i = 0; i < 4; i++) {
+            if (lampu[i].zone == zoneCmd) {
+              Serial.printf(">> Perintah Website: Zona %s -> %s\n", zoneCmd.c_str(), action.c_str());
+              if (action == "ON" || action == "EMERGENCY") {
+                lampu[i].manualMode = true;
+                lampu[i].isON = true;
+                lampu[i].pwmLevel = 255;  
+                lampu[i].trigger = "REMOTE ON";
+                lampu[i].kondisi = "NYALA MANUAL";
+                Serial.printf(">> Zone %s: Set PWM 255, manualMode=true\n", zoneCmd.c_str());
+              } else if (action == "OFF") {
+                lampu[i].manualMode = true;
+                lampu[i].isON = false;
+                lampu[i].pwmLevel = 0;    
+                lampu[i].trigger = "REMOTE OFF";
+                lampu[i].kondisi = "MATI MANUAL";
+                Serial.printf(">> Zone %s: Set PWM 0, manualMode=true\n", zoneCmd.c_str());
+              } else if (action == "AUTO") {
+                lampu[i].manualMode = false;
+                Serial.printf(">> Zone %s: Set manualMode=false (AUTO)\n", zoneCmd.c_str());
+              }
+            }
+          }
+          
+          // Konfirmasi perintah selesai ke server
+          HTTPClient httpAck;
+          httpAck.begin(apiAckUrl);
+          httpAck.addHeader("Content-Type", "application/json");
+          httpAck.POST("{\"ids\":[" + String(id) + "]}");
+          httpAck.end();
+        }
+      }
+    }
+    http.end();
   }
-  doc["masihMasaTunggu"] = masaTunggu;
+  
+  // 4. KIRIM DATA KE WEBSITE (Tiap 1 detik bergantian antar zona untuk mencegah blocking HTTPS)
+  static int currentZoneToSend = 0;
+  if (millis() - lastSend > 1000) {
+    lastSend = millis();
+    
+    int i = currentZoneToSend;
+    DynamicJsonDocument doc(512);
+    
+    doc["device_id"] = deviceId;
+    doc["zone"] = lampu[i].zone;
+    doc["lux"] = currentLux;
+    doc["jarak"] = currentJarak;
+    doc["voltage"] = currentV;
+    doc["current"] = (lampu[i].isON) ? (currentmA / 4.0) : 0; 
+    bool zoneMasaTunggu = false;
+    if (currentLux < luxThreshold) {
+      unsigned long timeSinceLastGerakan = (millis() - lastGerakanTime[i]) / 1000;
+      zoneMasaTunggu = (timeSinceLastGerakan < delayUltrasonik) && !adaOrang;
+    }
 
-  if (lampu[zone].pwmLevel > 0 && currentmA < 5.0 && inaReady) {
-    lampu[zone].failCount++;
-    if (lampu[zone].failCount >= 30) {
-      doc["kondisi"] = "RUSAK";
-      doc["trigger"] = "ERROR";
+    doc["sedangAdaOrang"] = adaOrang;
+    doc["masihMasaTunggu"] = zoneMasaTunggu;
+    doc["tombol"] = tombolDitekan;
+    
+    if (lampu[i].pwmLevel > 0 && currentmA < 5.0 && inaReady) {
+       // Lampu seharusnya nyala (PWM > 0) tapi arus mendekati 0
+       lampu[i].failCount++;
+       if (lampu[i].failCount >= 30) { // Harus 0 mA berturut-turut (~2 menit) baru dianggap rusak
+          doc["kondisi"] = "RUSAK";
+          doc["trigger"] = "ERROR - ARUS 0";
+       } else {
+          doc["kondisi"] = lampu[i].kondisi;
+          doc["trigger"] = lampu[i].trigger;
+       }
     } else {
       doc["kondisi"] = lampu[zone].kondisi;
       doc["trigger"] = lampu[zone].trigger;
     }
-  } else {
-    lampu[zone].failCount = 0;
-    doc["kondisi"] = lampu[zone].kondisi;
-    doc["trigger"] = lampu[zone].trigger;
+    
+    doc["powerLampu"] = lampu[i].isON ? lampu[i].pwmLevel : 0;
+    
+    String payload;
+    serializeJson(doc, payload);
+    
+    Serial.println("\n--- MENGIRIM DATA KE SERVER ---");
+    Serial.println("Payload: " + payload);
+    
+    HTTPClient http;
+    http.begin(apiDataUrl);
+    http.addHeader("Content-Type", "application/json");
+    int res = http.POST(payload);
+    
+    Serial.printf("[Monitor] Zone %s | Sync: HTTP %d\n", lampu[i].zone.c_str(), res);
+    http.end();
+    
+    // Pindah ke zona berikutnya untuk loop berikutnya
+    currentZoneToSend = (currentZoneToSend + 1) % 4;
   }
-  doc["powerLampu"] = lampu[zone].isON ? lampu[zone].pwmLevel : 0;
-
-  String payload;
-  serializeJson(doc, payload);
-
-  HTTPClient http;
-  http.begin(apiDataUrl);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-API-Key", API_KEY);
-  http.setTimeout(1500);
-
-  unsigned long t0 = millis();
-  int code = http.POST(payload);
-  unsigned long dt = millis() - t0;
-
-  if (DEBUG && DEBUG_NETWORK) {
-    Serial.printf("[NET] Send Zone %s: HTTP %d (%lums)\n", lampu[zone].zone.c_str(), code, dt);
-  }
-
-  if (code != 200 && code != 201) {
-    Serial.printf("[ERROR] Send failed for Zone %s: HTTP %d\n", lampu[zone].zone.c_str(), code);
-  }
-
-  http.end();
-  zone = (zone + 1) % 4;
-}
-
-// ═══════════════════════════════════════════════
-// LOOP UTAMA
-// ═══════════════════════════════════════════════
-void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[WIFI] Connection lost! Reconnecting...");
-    WiFi.reconnect();
-    delay(1000);
-    return;
-  }
-  now = millis();
-
-  // ── SENSOR READ: Setiap 20ms ──
-  if (now - lastSensorRead >= 20) {
-    lastSensorRead = now;
-
-    // Trigger ultrasonic tiap 30ms
-    if (now - lastUltraTrigger >= 30) {
-      lastUltraTrigger = now;
-      triggerUltrasonic();
-    }
-
-    // Baca ultrasonic
-    currentJarak = getJarak();
-
-    // Baca switch
-    tombolDitekan = (SWITCH_READ == LOW);
-
-    // Log switch state change
-    if (tombolDitekan != lastSwitchState) {
-      lastSwitchState = tombolDitekan;
-      Serial.printf("[SWITCH] State: %s\n", tombolDitekan ? "DITEKAN → Semua PWM 255" : "LEPAS → AUTO");
-    }
-
-    // Baca lux (50ms)
-    if (bhReady && now - lastLuxRead >= 50) {
-      lastLuxRead = now;
-      float newLux = lightMeter.readLightLevel();
-      if (newLux < 0) newLux = 0;
-      currentLux = newLux;
-    }
-
-    // Baca INA219 (200ms)
-    if (inaReady && now - lastInaRead >= 200) {
-      lastInaRead = now;
-      currentV = ina219.getBusVoltage_V();
-      currentmA = ina219.getCurrent_mA();
-      if (currentV < 0.1) currentV = 0;
-      if (currentmA < 0) currentmA = 0;
-    }
-
-    // ── LOGIKA LAMPU ──
-    bool adaOrang = (currentJarak < 3);
-
-    // Hysteresis
-    if (adaOrang) {
-      lastOrangTime = now;
-      lastAdaOrang = true;
-    } else if (now - lastOrangTime < ORANG_HYSTERESIS) {
-      adaOrang = true;
-    } else {
-      lastAdaOrang = false;
-    }
-
-    for (int i = 0; i < 4; i++) {
-      if (tombolDitekan) {
-        setPWM(i, 255);
-        lampu[i].trigger = "SWITCH";
-        lampu[i].kondisi = "NYALA PENUH";
-        lampu[i].manualMode = false;
-      } else if (lampu[i].manualMode) {
-        // Mode manual
-      } else {
-        if (currentLux < luxThreshold) {
-          if (adaOrang) lastGerakanTime[i] = now;
-          unsigned long dt = (now - lastGerakanTime[i]) / 1000;
-          bool tunggu = (dt < delayUltrasonik);
-
-          if (adaOrang || tunggu) {
-            setPWM(i, 255);
-            lampu[i].trigger = adaOrang ? "AUTO 100%" : "TUNGGU";
-            lampu[i].kondisi = "NYALA PENUH";
-          } else {
-            setPWM(i, 20);
-            lampu[i].trigger = "AUTO 20";
-            lampu[i].kondisi = "NYALA REDUP";
-          }
-          lampu[i].isON = true;
-        } else {
-          setPWM(i, 0);
-          lampu[i].trigger = "TERANG";
-          lampu[i].kondisi = "MATI";
-        }
-      }
-    }
-
-    // ── DEBUG LOG: Sensor & Status (tiap 1 detik) ──
-    if (DEBUG && DEBUG_SENSOR && now - lastDebugLog >= DEBUG_INTERVAL) {
-      lastDebugLog = now;
-
-      Serial.println("┌─────────────────────────────────────────┐");
-      Serial.printf("│ SENSOR │ Lux: %6.1f │ Jarak: %5.1f cm │ Switch: %s\n",
-        currentLux, currentJarak, tombolDitekan ? "ON " : "OFF");
-      Serial.printf("│ POWER  │ V: %5.2fV │ I: %6.1fmA     │\n", currentV, currentmA);
-      Serial.printf("│ THRESH │ Lux: %.0f   │ Delay: %ds       │\n", luxThreshold, delayUltrasonik);
-      Serial.println("├─────────────────────────────────────────┤");
-
-      for (int i = 0; i < 4; i++) {
-        unsigned long dt = (now - lastGerakanTime[i]) / 1000;
-        Serial.printf("│ Zone %s │ PWM: %3d │ %s │ %s │ %lus ago\n",
-          lampu[i].zone.c_str(),
-          lampu[i].pwmLevel,
-          lampu[i].kondisi.c_str(),
-          lampu[i].trigger.c_str(),
-          dt);
-      }
-
-      Serial.printf("│ WIFI   │ RSSI: %ddBm │ IP: %s\n",
-        WiFi.RSSI(), WiFi.localIP().toString().c_str());
-      Serial.printf("│ UPTIME │ %lu detik\n", now / 1000);
-      Serial.println("└─────────────────────────────────────────┘");
-    }
-  }
-
-  // ── NETWORK ──
-  if (now - lastSettingsFetch > 30000) {
-    lastSettingsFetch = now;
-    fetchSettings();
-  }
-  if (now - lastControl > 2000) {
-    lastControl = now;
-    fetchControl();
-  }
-  if (now - lastSend > 1000) {
-    lastSend = now;
-    sendData();
-  }
+  
+  delay(100);
 }
